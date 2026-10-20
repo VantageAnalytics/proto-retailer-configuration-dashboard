@@ -5,8 +5,8 @@ import { LoginScreen } from './components/LoginScreen';
 import { Dashboard } from './components/Dashboard';
 import { AppHeader } from './components/AppHeader';
 
-/** Set to true to show the login screen again. The screen itself still works. */
-const REQUIRE_LOGIN = false;
+/** Set to false to skip the login screen while working on the dashboard. */
+const REQUIRE_LOGIN = true;
 
 export default function App() {
   const [authed, setAuthed] = useState(!REQUIRE_LOGIN);
