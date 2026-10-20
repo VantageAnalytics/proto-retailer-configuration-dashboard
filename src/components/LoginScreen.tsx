@@ -4,7 +4,7 @@ import { cardShadow, palette } from '../theme';
 import { Banner } from './ui';
 
 const USERNAME = 'vantage';
-const PASSWORD = 'pr0t0type3!';
+const PASSWORD = 'pr0t0typ3!';
 
 /**
  * Inputs use non-standard name/id attributes plus autocomplete="off" and
@@ -51,9 +51,7 @@ export function LoginScreen({ onSuccess }: { onSuccess: () => void }) {
           p: 4,
         }}
       >
-        <Typography variant="h1" sx={{ fontSize: 28 }}>
-          Vantage
-        </Typography>
+        <Typography variant="h1">Vantage</Typography>
         <Typography variant="body2" sx={{ color: palette.textSecondary, mt: 1 }}>
           Retailer Configuration Dashboard prototype
         </Typography>

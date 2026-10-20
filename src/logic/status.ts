@@ -33,13 +33,6 @@ export function computeCapabilityStatus(capability: Capability): StatusResult {
       .map((f) => f.key),
   );
 
-  for (const check of capability.prerequisites) {
-    if (check.key === capability.masterFeatureKey + '-toggle') continue;
-    // A check backed by an empty blocking field is reported once, as the field.
-    if (check.fixesFieldKey && emptyBlockingKeys.has(check.fixesFieldKey)) continue;
-    if (!check.passed && !check.pending) reasons.push(check.label);
-  }
-
   for (const field of capability.configs) {
     if (emptyBlockingKeys.has(field.key)) reasons.push(`${field.label} is empty`);
   }

@@ -1,141 +1,146 @@
 import type { ReactNode } from 'react';
-import { Box, Tooltip, Typography } from '@mui/material';
+import { Box, Button, Tooltip, Typography } from '@mui/material';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
-  faCheck,
+  faCircleCheck,
+  faCircleExclamation,
+  faClock,
   faExclamation,
   faCircleInfo,
   faTriangleExclamation,
 } from '@fortawesome/free-solid-svg-icons';
 import type { IconDefinition } from '@fortawesome/fontawesome-svg-core';
 import { brand, palette } from '../theme';
-import type { CapabilityStatus, RequiredLevel, Source } from '../types';
+import type { CapabilityStatus } from '../types';
 
-/** Clarifying pill next to a label: #f5f5f5 background, #666 text, 12px. */
-export function Pill({ children, title }: { children: ReactNode; title?: string }) {
-  const pill = (
+type ChipTone = 'neutral' | 'success' | 'warning' | 'error' | 'info';
+
+/**
+ * Chip geometry from the design system: small size is a 24px fully rounded pill
+ * with a 1px border, a 14px regular label, and a 6px gap before the leading icon.
+ * Tinted tones keep ink text; only Error is a solid fill with a white label.
+ */
+const chipTones: Record<ChipTone, { bg: string; border: string; color: string }> = {
+  neutral: { bg: palette.pillBg, border: palette.border, color: palette.textPrimary },
+  success: { bg: palette.successBg, border: palette.successBorder, color: palette.textPrimary },
+  warning: { bg: palette.amberBg, border: palette.warningBorder, color: palette.textPrimary },
+  error: { bg: palette.errorBg, border: palette.errorBg, color: '#FFFFFF' },
+  info: { bg: palette.infoBg, border: palette.infoBorder, color: palette.textPrimary },
+};
+
+/** Sizes keep the design system's proportions; inline chips use the compact one. */
+const chipSizes = {
+  compact: { height: 20, fontSize: 12, icon: 11, gap: '5px', padIcon: '6px', pad: '8px' },
+  small: { height: 24, fontSize: 14, icon: 13, gap: '6px', padIcon: '7px', pad: '10px' },
+} as const;
+
+/** Label collapse/expand timing, shared by every property the collapse animates. */
+const collapseTransition = '160ms ease';
+
+export function Chip({
+  children,
+  tone = 'neutral',
+  size = 'compact',
+  icon,
+  iconColor,
+  title,
+  collapsed,
+}: {
+  children: ReactNode;
+  tone?: ChipTone;
+  size?: keyof typeof chipSizes;
+  icon?: IconDefinition;
+  iconColor?: string;
+  title?: string;
+  /** Set to render icon-only until expanded. Requires an icon to stay legible. */
+  collapsed?: boolean;
+}) {
+  const t = chipTones[tone];
+  const s = chipSizes[size];
+  const collapsible = collapsed !== undefined;
+  const chip = (
     <Box
       component="span"
       sx={{
         display: 'inline-flex',
         alignItems: 'center',
-        bgcolor: palette.pillBg,
-        color: palette.textSecondary,
-        fontSize: 12,
-        lineHeight: 1.4,
-        borderRadius: '8px',
-        px: 1,
-        py: '2px',
+        gap: collapsible ? 0 : s.gap,
+        height: s.height,
+        // Collapsed chips drop the fill and keep a transparent border, so the bare
+        // icon sits flush and the pill grows back without shifting the row.
+        bgcolor: collapsed ? 'transparent' : t.bg,
+        border: '1px solid',
+        borderColor: collapsed ? 'transparent' : t.border,
+        color: t.color,
+        fontSize: s.fontSize,
+        fontWeight: 400,
+        lineHeight: 1,
+        borderRadius: '999px',
+        pl: collapsed ? 0 : icon ? s.padIcon : s.pad,
+        pr: collapsed ? 0 : s.pad,
         whiteSpace: 'nowrap',
         cursor: title ? 'help' : 'default',
+        flexShrink: 0,
+        transition: `padding-left ${collapseTransition}, padding-right ${collapseTransition}, background-color ${collapseTransition}, border-color ${collapseTransition}`,
       }}
     >
-      {children}
+      {icon && <FontAwesomeIcon icon={icon} style={{ fontSize: s.icon, color: iconColor ?? 'inherit' }} />}
+      {collapsible ? (
+        <Box
+          component="span"
+          sx={{
+            display: 'inline-block',
+            overflow: 'hidden',
+            maxWidth: collapsed ? 0 : 120,
+            opacity: collapsed ? 0 : 1,
+            ml: collapsed ? 0 : s.gap,
+            transition: `max-width ${collapseTransition}, opacity ${collapseTransition}, margin-left ${collapseTransition}`,
+          }}
+        >
+          {children}
+        </Box>
+      ) : (
+        children
+      )}
     </Box>
   );
-  return title ? <Tooltip title={title}>{pill}</Tooltip> : pill;
+  return title ? <Tooltip title={title}>{chip}</Tooltip> : chip;
 }
 
-/** Green circle with a white check, very light green background, dark green label. */
-export function SuccessPill({ children }: { children: ReactNode }) {
+/** Clarifying chip next to a label. */
+export function Pill({ children, title }: { children: ReactNode; title?: string }) {
   return (
-    <Box
-      component="span"
-      sx={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        gap: 1,
-        bgcolor: palette.successBg,
-        border: `1px solid ${palette.successBorder}`,
-        color: palette.successText,
-        fontSize: 12,
-        fontWeight: 600,
-        borderRadius: '8px',
-        px: 1,
-        py: '2px',
-        whiteSpace: 'nowrap',
-      }}
-    >
-      <Box
-        component="span"
-        sx={{
-          width: 14,
-          height: 14,
-          borderRadius: '50%',
-          bgcolor: palette.successCircle,
-          display: 'inline-flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          flexShrink: 0,
-        }}
-      >
-        <FontAwesomeIcon icon={faCheck} style={{ color: '#FFFFFF', fontSize: 8 }} />
-      </Box>
-      {children}
-    </Box>
+    <Chip title={title}>{children}</Chip>
   );
 }
 
-/** Solid red background, white circle with a red exclamation, white label. */
+export function SuccessPill({ children, collapsed }: { children: ReactNode; collapsed?: boolean }) {
+  return (
+    <Chip tone="success" icon={faCircleCheck} iconColor={palette.successCircle} collapsed={collapsed}>
+      {children}
+    </Chip>
+  );
+}
+
 export function ErrorPill({ children }: { children: ReactNode }) {
   return (
-    <Box
-      component="span"
-      sx={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        gap: 1,
-        bgcolor: palette.errorBg,
-        color: '#FFFFFF',
-        fontSize: 12,
-        fontWeight: 600,
-        borderRadius: '8px',
-        px: 1,
-        py: '2px',
-        whiteSpace: 'nowrap',
-      }}
-    >
-      <Box
-        component="span"
-        sx={{
-          width: 14,
-          height: 14,
-          borderRadius: '50%',
-          bgcolor: '#FFFFFF',
-          display: 'inline-flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          flexShrink: 0,
-        }}
-      >
-        <FontAwesomeIcon icon={faExclamation} style={{ color: palette.errorBg, fontSize: 8 }} />
-      </Box>
+    <Chip tone="error" icon={faCircleExclamation}>
       {children}
-    </Box>
+    </Chip>
   );
 }
 
-export function PendingPill({ children = 'Pending approval' }: { children?: ReactNode }) {
+export function PendingPill({
+  children = 'Pending approval',
+  collapsed,
+}: {
+  children?: ReactNode;
+  collapsed?: boolean;
+}) {
   return (
-    <Box
-      component="span"
-      sx={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        gap: 1,
-        bgcolor: palette.amberBg,
-        border: `1px solid ${palette.warningBorder}`,
-        color: palette.amber,
-        fontSize: 12,
-        fontWeight: 600,
-        borderRadius: '8px',
-        px: 1,
-        py: '2px',
-        whiteSpace: 'nowrap',
-      }}
-    >
+    <Chip tone="warning" icon={faClock} iconColor={palette.amber} collapsed={collapsed}>
       {children}
-    </Box>
+    </Chip>
   );
 }
 
@@ -154,75 +159,11 @@ export function StatusPill({ status }: { status: CapabilityStatus }) {
   if (status === 'pending') return <PendingPill />;
   if (status === 'incomplete')
     return (
-      <Box
-        component="span"
-        sx={{
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: 1,
-          bgcolor: palette.warningBg,
-          border: `1px solid ${palette.warningBorder}`,
-          color: palette.amber,
-          fontSize: 12,
-          fontWeight: 600,
-          borderRadius: '8px',
-          px: 1,
-          py: '2px',
-        }}
-      >
-        <FontAwesomeIcon icon={faTriangleExclamation} style={{ fontSize: 10 }} />
+      <Chip tone="warning" icon={faTriangleExclamation} iconColor={palette.amber}>
         Incomplete
-      </Box>
+      </Chip>
     );
   return <Pill>{statusLabels[status]}</Pill>;
-}
-
-const dotColors: Record<CapabilityStatus, string> = {
-  live: palette.successCircle,
-  incomplete: brand.orange,
-  pending: palette.amber,
-  declined: palette.errorBg,
-  off: palette.greyTrack,
-  unavailable: '#DADADA',
-};
-
-export function StatusDot({ status }: { status: CapabilityStatus }) {
-  return (
-    <Tooltip title={statusLabels[status]}>
-      <Box
-        component="span"
-        sx={{
-          width: 8,
-          height: 8,
-          borderRadius: '50%',
-          bgcolor: dotColors[status],
-          flexShrink: 0,
-        }}
-      />
-    </Tooltip>
-  );
-}
-
-export const sourceLabels: Record<Source, string> = {
-  LaunchDarkly: 'LaunchDarkly',
-  AppConfig: 'App Config',
-  Database: 'Database',
-  Code: 'Code',
-};
-
-export function SourceTag({ source }: { source: Source }) {
-  return <Pill title={`Stored in ${sourceLabels[source]}`}>{sourceLabels[source]}</Pill>;
-}
-
-const requiredLabels: Record<RequiredLevel, string> = {
-  BlocksPublishing: 'Blocks publishing',
-  BreaksFeature: 'Breaks a feature',
-  Optional: 'Optional',
-};
-
-export function RequiredTag({ level, note }: { level: RequiredLevel; note?: string }) {
-  const label = note ? `${requiredLabels[level]} (${note})` : requiredLabels[level];
-  return <Pill>{label}</Pill>;
 }
 
 type BannerKind = 'warning' | 'error' | 'info';
@@ -268,7 +209,7 @@ export function TextAction({
   tertiary?: boolean;
   disabled?: boolean;
 }) {
-  const color = tertiary ? palette.textSecondary : brand.orange;
+  const color = tertiary ? palette.textSecondary : brand.periwinkleDark;
   return (
     <Box
       component="button"
@@ -299,8 +240,54 @@ export function TextAction({
 export function SectionHeading({ children, action }: { children: ReactNode; action?: ReactNode }) {
   return (
     <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-      <Typography variant="h2">{children}</Typography>
+      <Typography variant="h4" sx={{ color: palette.textSecondary }}>
+        {children}
+      </Typography>
       {action}
+    </Box>
+  );
+}
+
+/** Sticky footer on a card with unsaved edits. Sits flush with the card edges. */
+export function UnsavedBar({
+  count,
+  onDiscard,
+  onSave,
+}: {
+  count: number;
+  onDiscard: () => void;
+  onSave: () => void;
+}) {
+  return (
+    <Box
+      sx={{
+        position: 'sticky',
+        bottom: 0,
+        mt: 3,
+        mx: -3,
+        mb: -3,
+        px: 3,
+        py: 2,
+        bgcolor: brand.periwinkleTint,
+        borderTop: `1px solid ${brand.periwinkleLight}`,
+        borderRadius: '0 0 8px 8px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: 2,
+      }}
+    >
+      <Typography variant="body2" sx={{ fontWeight: 600 }}>
+        {count} unsaved change{count === 1 ? '' : 's'}
+      </Typography>
+      <Box sx={{ display: 'flex', gap: 2 }}>
+        <Button onClick={onDiscard} sx={{ color: palette.textSecondary }}>
+          Discard
+        </Button>
+        <Button variant="contained" onClick={onSave}>
+          Save changes
+        </Button>
+      </Box>
     </Box>
   );
 }

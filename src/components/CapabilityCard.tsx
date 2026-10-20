@@ -1,32 +1,31 @@
 import { useState } from 'react';
-import { Box, Button, Collapse, Divider, Typography } from '@mui/material';
+import { Box, Collapse, Divider, Typography } from '@mui/material';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
   faAngleDown,
   faAngleUp,
-  faArrowRightToBracket,
-  faCheck,
-  faClock,
   faRotateRight,
-  faXmark,
 } from '@fortawesome/free-solid-svg-icons';
-import { brand, cardShadow, palette } from '../theme';
-import { computeCapabilityStatus, countPending, summaryLine } from '../logic/status';
-import { configGroupOrder } from '../data/capabilities';
-import { ConfigFieldRow, type ConfigValue } from './ConfigFieldRow';
+import { cardShadow, palette } from '../theme';
+import { computeCapabilityStatus, summaryLine } from '../logic/status';
+import { configGroups } from '../data/capabilities';
+import { CardChangeHistory } from './ChangeHistoryPanel';
+import { ConfigFieldGroup } from './ConfigFieldGroup';
+import { type ConfigValue } from './ConfigFieldRow';
 import { StateToggle } from './StateToggle';
 import {
   Banner,
+  Chip,
   ErrorPill,
   InfoTooltip,
   PendingPill,
   SectionHeading,
-  SourceTag,
   StatusPill,
   SuccessPill,
   TextAction,
+  UnsavedBar,
 } from './ui';
-import type { Capability, Feature } from '../types';
+import type { Capability, ChangeEvent, Feature } from '../types';
 
 export interface Draft {
   features: Record<string, boolean>;
@@ -37,6 +36,8 @@ export const emptyDraft: Draft = { features: {}, configs: {} };
 
 interface Props {
   capability: Capability;
+  /** Change history for this capability only. */
+  events: ChangeEvent[];
   expanded: boolean;
   onToggleExpanded: () => void;
   draft: Draft;
@@ -44,42 +45,17 @@ interface Props {
   onConfigChange: (key: string, next: ConfigValue) => void;
   onSave: () => void;
   onDiscard: () => void;
-  onGoToGlobalSection: (sectionId: string) => void;
+  onAddNote: (body: string) => void;
   registerFieldRef: (key: string, node: HTMLElement | null) => void;
-  focusField: (key: string) => void;
   cardRef: (node: HTMLDivElement | null) => void;
 }
 
-function SubSectionHeader({
-  title,
-  open,
-  onToggle,
-}: {
-  title: string;
-  open: boolean;
-  onToggle: () => void;
-}) {
+function SubSectionHeader({ title }: { title: string }) {
   return (
-    <Box
-      component="button"
-      type="button"
-      onClick={onToggle}
-      sx={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        width: '100%',
-        background: 'none',
-        border: 'none',
-        borderBottom: `2px solid ${palette.textPrimary}`,
-        p: 0,
-        pb: 1,
-        font: 'inherit',
-        cursor: 'pointer',
-      }}
-    >
-      <Typography variant="h2">{title}</Typography>
-      <FontAwesomeIcon icon={open ? faAngleUp : faAngleDown} style={{ fontSize: 14 }} />
+    <Box sx={{ borderBottom: `1px solid ${palette.border}`, pb: 1 }}>
+      <Typography variant="h3" sx={{ fontWeight: 600, color: palette.textSecondary }}>
+        {title}
+      </Typography>
     </Box>
   );
 }
@@ -88,14 +64,19 @@ function FeatureRow({
   feature,
   draftValue,
   disabled,
+  disabledReason,
   onChange,
   onRequestAgain,
+  required,
 }: {
   feature: Feature;
   draftValue: boolean | undefined;
   disabled: boolean;
+  disabledReason?: string;
   onChange: (next: boolean) => void;
   onRequestAgain: () => void;
+  /** The master feature carries a Required chip in place of its description. */
+  required?: boolean;
 }) {
   const unsaved = draftValue !== undefined;
   const effectiveState: Feature['state'] = unsaved
@@ -110,7 +91,7 @@ function FeatureRow({
         state={effectiveState}
         ariaLabel={feature.label}
         disabled={disabled}
-        disabledReason="Requires Meta to be on"
+        disabledReason={disabledReason}
         onChange={onChange}
       />
       <Box sx={{ minWidth: 0 }}>
@@ -118,23 +99,8 @@ function FeatureRow({
           <Typography variant="body2" sx={{ fontWeight: 600 }}>
             {feature.label}
           </Typography>
-          {unsaved && (
-            <Box
-              component="span"
-              sx={{
-                fontSize: 12,
-                fontWeight: 600,
-                color: brand.orangeDark,
-                bgcolor: brand.orangeTint,
-                border: `1px solid ${brand.orangeLight}`,
-                borderRadius: '8px',
-                px: 1,
-                py: '2px',
-              }}
-            >
-              Unsaved
-            </Box>
-          )}
+          {required && <Chip>Required</Chip>}
+          {unsaved && <Chip tone="info">Unsaved</Chip>}
           {!unsaved && feature.state === 'pending' && <PendingPill />}
           {!unsaved && feature.state === 'live' && <SuccessPill>Live</SuccessPill>}
           {!unsaved && feature.state === 'declined' && <ErrorPill>Declined</ErrorPill>}
@@ -160,6 +126,7 @@ function FeatureRow({
 export function CapabilityCard(props: Props) {
   const {
     capability,
+    events,
     expanded,
     onToggleExpanded,
     draft,
@@ -167,15 +134,12 @@ export function CapabilityCard(props: Props) {
     onConfigChange,
     onSave,
     onDiscard,
-    onGoToGlobalSection,
+    onAddNote,
     registerFieldRef,
-    focusField,
     cardRef,
   } = props;
 
-  const [featuresOpen, setFeaturesOpen] = useState(true);
-  const [configOpen, setConfigOpen] = useState(true);
-  const [checksOpen, setChecksOpen] = useState(true);
+  const [historyCollapsed, setHistoryCollapsed] = useState(false);
 
   const { status, reasons } = computeCapabilityStatus(capability);
   const unsavedCount = Object.keys(draft.features).length + Object.keys(draft.configs).length;
@@ -184,14 +148,14 @@ export function CapabilityCard(props: Props) {
   const masterDraft = master ? draft.features[master.key] : undefined;
   const masterOn = masterDraft !== undefined ? masterDraft : master?.state === 'live' || master?.state === 'pending';
 
-  const failedChecks = capability.prerequisites.filter((c) => !c.passed && !c.pending);
+  const expandable = capability.available || Boolean(capability.unavailableReason);
 
   const header = (
     <Box
       component="button"
       type="button"
       onClick={onToggleExpanded}
-      disabled={!capability.available}
+      disabled={!expandable}
       sx={{
         display: 'flex',
         alignItems: 'center',
@@ -203,18 +167,13 @@ export function CapabilityCard(props: Props) {
         p: 0,
         font: 'inherit',
         textAlign: 'left',
-        cursor: capability.available ? 'pointer' : 'default',
+        cursor: expandable ? 'pointer' : 'default',
       }}
     >
       <Box sx={{ minWidth: 0 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 1.5 }}>
-          <Typography variant="h2" sx={{ fontSize: 16 }}>
-            {capability.name}
-          </Typography>
+          <Typography variant="h2">{capability.name}</Typography>
           <StatusPill status={status} />
-          {countPending(capability) > 0 && status !== 'pending' && (
-            <PendingPill>{countPending(capability)} pending</PendingPill>
-          )}
         </Box>
         {capability.subtitle && (
           <Typography variant="caption" sx={{ color: palette.textSecondary, display: 'block', mt: '2px' }}>
@@ -227,17 +186,10 @@ export function CapabilityCard(props: Props) {
       </Box>
 
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0 }}>
-        {!capability.detailed && (
-          <StateToggle
-            state={capability.available ? (capability.features[0]?.state ?? 'off') : 'off'}
-            ariaLabel={capability.name}
-            disabled
-            presentational
-          />
+        {!capability.available && (
+          <StateToggle state="off" ariaLabel={capability.name} disabled presentational />
         )}
-        {capability.available && (
-          <FontAwesomeIcon icon={expanded ? faAngleUp : faAngleDown} style={{ fontSize: 16 }} />
-        )}
+        {expandable && <FontAwesomeIcon icon={expanded ? faAngleUp : faAngleDown} style={{ fontSize: 16 }} />}
       </Box>
     </Box>
   );
@@ -255,186 +207,87 @@ export function CapabilityCard(props: Props) {
     >
       {header}
 
-      {!capability.detailed && (
-        <Typography variant="caption" sx={{ color: palette.textSecondary, display: 'block', mt: 2 }}>
-          Details in next iteration
-        </Typography>
+      {!capability.available && capability.unavailableReason && (
+        <Collapse in={expanded} unmountOnExit>
+          <Box sx={{ mt: 2 }}>
+            <Banner kind="info">{capability.unavailableReason}</Banner>
+          </Box>
+        </Collapse>
       )}
 
       {capability.detailed && (
         <Collapse in={expanded} unmountOnExit>
-          <Box sx={{ mt: '36px', display: 'flex', flexDirection: 'column', gap: '36px' }}>
-            {/* Section A: Prerequisite checks */}
+          {/* Full-bleed rule separating the card header from its body. */}
+          <Divider sx={{ mt: 2, mx: -3 }} />
+          <Box sx={{ mt: 3, display: 'flex', alignItems: 'flex-start', gap: 3 }}>
+          <Box sx={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 3 }}>
+            {/* Section A: Features */}
             <Box>
-              <SubSectionHeader
-                title="Prerequisite checks"
-                open={checksOpen}
-                onToggle={() => setChecksOpen(!checksOpen)}
-              />
-              <Collapse in={checksOpen}>
-                <Box sx={{ mt: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
-                  {failedChecks.length > 0 && (
-                    <Banner kind="warning">
-                      <strong>Meta won't work yet:</strong> {failedChecks.length} required setting
-                      {failedChecks.length === 1 ? ' is' : 's are'} missing.{' '}
-                      {failedChecks.map((c) => c.label.replace(/ is set$/, '')).join(', ')} is empty.
-                    </Banner>
-                  )}
-
-                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                    {capability.prerequisites.map((check) => {
-                      const state = check.pending ? 'pending' : check.passed ? 'pass' : 'fail';
-                      return (
-                        <Box key={check.key} sx={{ display: 'flex', alignItems: 'flex-start', gap: 1 }}>
-                          <Box
-                            sx={{
-                              width: 16,
-                              height: 16,
-                              borderRadius: '50%',
-                              mt: '2px',
-                              flexShrink: 0,
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              bgcolor:
-                                state === 'pass'
-                                  ? palette.successCircle
-                                  : state === 'pending'
-                                    ? palette.amber
-                                    : palette.errorBg,
-                            }}
-                          >
-                            <FontAwesomeIcon
-                              icon={state === 'pass' ? faCheck : state === 'pending' ? faClock : faXmark}
-                              style={{ color: '#FFFFFF', fontSize: 9 }}
-                            />
-                          </Box>
-                          <Box sx={{ minWidth: 0 }}>
-                            <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
-                              <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                                {check.label}
-                              </Typography>
-                              <SourceTag source={check.source} />
-                              {state === 'pending' && <PendingPill />}
-                            </Box>
-                            <Typography variant="caption" sx={{ color: palette.textSecondary, display: 'block' }}>
-                              {check.explanation}
-                            </Typography>
-                            {state === 'fail' && (
-                              <Box sx={{ mt: 0.5 }}>
-                                <TextAction
-                                  icon={faArrowRightToBracket}
-                                  onClick={() => {
-                                    if (check.fixesFieldKey) focusField(check.fixesFieldKey);
-                                    else if (check.fixesGlobalSection) onGoToGlobalSection(check.fixesGlobalSection);
-                                  }}
-                                >
-                                  Go to setting
-                                </TextAction>
-                              </Box>
-                            )}
-                          </Box>
-                        </Box>
-                      );
-                    })}
-                  </Box>
+              <SubSectionHeader title="Features" />
+              <Box sx={{ mt: 1.5, display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+                {master && (
+                  <FeatureRow
+                    feature={master}
+                    draftValue={draft.features[master.key]}
+                    disabled={false}
+                    required
+                    onChange={(next) => onFeatureChange(master.key, next)}
+                    onRequestAgain={() => onFeatureChange(master.key, true)}
+                  />
+                )}
+                <Box
+                  sx={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+                    columnGap: 3,
+                    rowGap: 1.5,
+                  }}
+                >
+                  {capability.features
+                    .filter((f) => f.prerequisiteKey)
+                    .map((feature) => (
+                      <FeatureRow
+                        key={feature.key}
+                        feature={feature}
+                        draftValue={draft.features[feature.key]}
+                        disabled={!masterOn}
+                        disabledReason={master ? `Requires ${master.label} to be on` : undefined}
+                        onChange={(next) => onFeatureChange(feature.key, next)}
+                        onRequestAgain={() => onFeatureChange(feature.key, true)}
+                      />
+                    ))}
                 </Box>
-              </Collapse>
+              </Box>
             </Box>
 
-            {/* Section B: Features */}
-            <Box>
-              <SubSectionHeader
-                title="Features"
-                open={featuresOpen}
-                onToggle={() => setFeaturesOpen(!featuresOpen)}
-              />
-              <Collapse in={featuresOpen}>
-                <Box sx={{ mt: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
-                  {master && (
-                    <FeatureRow
-                      feature={master}
-                      draftValue={draft.features[master.key]}
-                      disabled={false}
-                      onChange={(next) => onFeatureChange(master.key, next)}
-                      onRequestAgain={() => onFeatureChange(master.key, true)}
-                    />
-                  )}
-                  <Box
-                    sx={{
-                      pl: 4,
-                      ml: 1.5,
-                      borderLeft: `1px solid ${palette.border}`,
-                      display: 'grid',
-                      gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
-                      columnGap: 3,
-                      rowGap: 2,
-                    }}
-                  >
-                    {capability.features
-                      .filter((f) => f.prerequisiteKey)
-                      .map((feature) => (
-                        <FeatureRow
-                          key={feature.key}
-                          feature={feature}
-                          draftValue={draft.features[feature.key]}
-                          disabled={!masterOn}
-                          onChange={(next) => onFeatureChange(feature.key, next)}
-                          onRequestAgain={() => onFeatureChange(feature.key, true)}
-                        />
-                      ))}
-                  </Box>
-                </Box>
-              </Collapse>
-            </Box>
-
-            {/* Section C: Configuration.
+            {/* Section B: Configuration.
                 Conflict with the LLM Design Guidelines: they call for complex modules to show a
                 summary state with an Edit button that opens a modal. The build brief's scaffold
-                takes precedence for page structure, so this is an inline accordion with inline
-                editing instead. */}
+                takes precedence for page structure, so this is inline editing instead. */}
             <Box>
-              <SubSectionHeader
-                title="Configuration"
-                open={configOpen}
-                onToggle={() => setConfigOpen(!configOpen)}
-              />
-              <Collapse in={configOpen}>
-                <Box sx={{ mt: 2, display: 'flex', flexDirection: 'column', gap: '36px' }}>
-                  {configGroupOrder.map((group) => {
-                    const fields = capability.configs.filter((c) => c.group === group);
-                    if (fields.length === 0) return null;
-                    return (
-                      <Box key={group}>
-                        <SectionHeading>{group}</SectionHeading>
-                        <Box
-                          sx={{
-                            mt: 2,
-                            display: 'grid',
-                            gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
-                            columnGap: 3,
-                            rowGap: 3,
-                          }}
-                        >
-                          {fields.map((field) => (
-                            <ConfigFieldRow
-                              key={field.key}
-                              field={field}
-                              draftValue={draft.configs[field.key]}
-                              onChange={(next) => onConfigChange(field.key, next)}
-                              onRequestAgain={() => onConfigChange(field.key, field.value)}
-                              fieldRef={(node) => registerFieldRef(field.key, node)}
-                            />
-                          ))}
-                        </Box>
+              <SubSectionHeader title="Configuration" />
+              <Box sx={{ mt: 1.5, display: 'flex', flexDirection: 'column', gap: 3 }}>
+                {configGroups(capability.configs).map((group) => {
+                  const fields = capability.configs.filter((c) => c.group === group);
+                  if (fields.length === 0) return null;
+                  return (
+                    <Box key={group}>
+                      <SectionHeading>{group}</SectionHeading>
+                      <Box sx={{ mt: 1.5 }}>
+                        <ConfigFieldGroup
+                          fields={fields}
+                          draftConfigs={draft.configs}
+                          onChange={onConfigChange}
+                          registerFieldRef={registerFieldRef}
+                        />
                       </Box>
-                    );
-                  })}
-                </Box>
-              </Collapse>
+                    </Box>
+                  );
+                })}
+              </Box>
             </Box>
 
-            {/* Section D: Built in code */}
+            {/* Section C: Built in code */}
             {capability.codeNotes.length > 0 && (
               <Box>
                 <Divider sx={{ mb: 2 }} />
@@ -450,38 +303,15 @@ export function CapabilityCard(props: Props) {
             )}
           </Box>
 
-          {unsavedCount > 0 && (
-            <Box
-              sx={{
-                position: 'sticky',
-                bottom: 0,
-                mt: 3,
-                mx: -3,
-                mb: -3,
-                px: 3,
-                py: 2,
-                bgcolor: brand.orangeTint,
-                borderTop: `1px solid ${brand.orangeLight}`,
-                borderRadius: '0 0 8px 8px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                gap: 2,
-              }}
-            >
-              <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                {unsavedCount} unsaved change{unsavedCount === 1 ? '' : 's'}
-              </Typography>
-              <Box sx={{ display: 'flex', gap: 2 }}>
-                <Button onClick={onDiscard} sx={{ color: palette.textSecondary }}>
-                  Discard
-                </Button>
-                <Button variant="contained" onClick={onSave}>
-                  Save changes
-                </Button>
-              </Box>
-            </Box>
-          )}
+            <CardChangeHistory
+              events={events}
+              collapsed={historyCollapsed}
+              onToggleCollapsed={() => setHistoryCollapsed(!historyCollapsed)}
+              onAddNote={onAddNote}
+            />
+          </Box>
+
+          {unsavedCount > 0 && <UnsavedBar count={unsavedCount} onDiscard={onDiscard} onSave={onSave} />}
         </Collapse>
       )}
 

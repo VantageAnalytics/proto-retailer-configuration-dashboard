@@ -1,7 +1,7 @@
 import type { Retailer } from '../types';
 
 export const retailers: Retailer[] = [
-  { id: 'ulta', name: 'Ulta' },
+  { id: 'retailer', name: '' },
   { id: 'thd-us', name: 'The Home Depot US' },
   { id: 'thd-ca', name: 'The Home Depot CA' },
   { id: 'canadian-tire', name: 'Canadian Tire' },
@@ -9,4 +9,4 @@ export const retailers: Retailer[] = [
   { id: 'sport-chek', name: 'Sport Chek' },
 ];
 
-export const defaultRetailerId = 'ulta';
+export const defaultRetailerId = 'retailer';

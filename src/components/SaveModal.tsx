@@ -21,7 +21,7 @@ export function SaveModal({
 }) {
   return (
     <Dialog open={open} onClose={onCancel} maxWidth="sm" fullWidth slotProps={{ paper: { sx: { borderRadius: '8px' } } }}>
-      <DialogTitle sx={{ fontSize: 16, fontWeight: 700 }}>Send these changes for approval</DialogTitle>
+      <DialogTitle sx={{ typography: 'h3' }}>Send these changes for approval</DialogTitle>
       <DialogContent>
         <Typography variant="body2" sx={{ color: palette.textSecondary, mb: 3 }}>
           These changes will be sent for approval. They won't take effect until an approver accepts them.

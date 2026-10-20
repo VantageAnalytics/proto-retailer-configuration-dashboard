@@ -1,10 +1,10 @@
 import { Box, MenuItem, Select, TextField, Typography } from '@mui/material';
 import { faRotateRight } from '@fortawesome/free-solid-svg-icons';
-import { brand, palette } from '../theme';
+import { palette } from '../theme';
 import { isEmptyValue } from '../logic/status';
 import { MultiSelectField } from './MultiSelectField';
 import { StateToggle } from './StateToggle';
-import { ErrorPill, PendingPill, Pill, RequiredTag, SourceTag, TextAction } from './ui';
+import { Chip, ErrorPill, PendingPill, Pill, TextAction } from './ui';
 import type { ConfigField } from '../types';
 
 export type ConfigValue = string | string[] | boolean | null;
@@ -24,8 +24,8 @@ export function ConfigFieldRow({
 }) {
   const unsaved = draftValue !== undefined;
   const value = unsaved ? draftValue : field.value;
-  const missing = field.required !== 'Optional' && isEmptyValue(value);
-  const blocking = field.required === 'BlocksPublishing' && isEmptyValue(value);
+  const required = field.required !== 'Optional';
+  const missing = required && isEmptyValue(value);
 
   function control() {
     if (field.inputType === 'toggle') {
@@ -46,7 +46,7 @@ export function ConfigFieldRow({
           fullWidth
           size="small"
           displayEmpty
-          error={blocking}
+          error={missing}
           value={(value as string) ?? ''}
           onChange={(e) => onChange(e.target.value === '' ? null : e.target.value)}
           inputRef={fieldRef}
@@ -80,7 +80,7 @@ export function ConfigFieldRow({
           value={(value as string[]) ?? []}
           options={field.options ?? []}
           onChange={onChange}
-          error={blocking}
+          error={missing}
           inputRef={fieldRef as React.Ref<HTMLButtonElement>}
         />
       );
@@ -90,7 +90,7 @@ export function ConfigFieldRow({
       <TextField
         fullWidth
         size="small"
-        error={blocking}
+        error={missing}
         value={(value as string) ?? ''}
         placeholder="Not set"
         onChange={(e) => onChange(e.target.value === '' ? null : e.target.value)}
@@ -102,45 +102,24 @@ export function ConfigFieldRow({
 
   return (
     <Box>
-      <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 1, mb: 1 }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 1, mb: 0.5 }}>
         <Typography variant="body2" sx={{ fontWeight: 600 }}>
           {field.label}
         </Typography>
-        <SourceTag source={field.source} />
-        <RequiredTag level={field.required} />
-        {unsaved && (
-          <Box
-            component="span"
-            sx={{
-              fontSize: 12,
-              fontWeight: 600,
-              color: brand.orangeDark,
-              bgcolor: brand.orangeTint,
-              border: `1px solid ${brand.orangeLight}`,
-              borderRadius: '8px',
-              px: 1,
-              py: '2px',
-            }}
-          >
-            Unsaved
-          </Box>
-        )}
+        {required && <Chip>Required</Chip>}
+        {unsaved && <Chip tone="info">Unsaved</Chip>}
         {!unsaved && field.state === 'pending' && <PendingPill />}
         {!unsaved && field.state === 'declined' && <ErrorPill>Declined</ErrorPill>}
       </Box>
 
+      {field.description && (
+        <Typography variant="caption" sx={{ color: palette.textSecondary, display: 'block', mt: '-2px', mb: 0.5 }}>
+          {field.description}
+        </Typography>
+      )}
+
       {control()}
 
-      {blocking && (
-        <Typography variant="caption" sx={{ color: palette.errorText, display: 'block', mt: '4px' }}>
-          Missing
-        </Typography>
-      )}
-      {!blocking && missing && (
-        <Typography variant="caption" sx={{ color: palette.textSecondary, display: 'block', mt: '4px' }}>
-          Missing
-        </Typography>
-      )}
       {!unsaved && field.state === 'declined' && (
         <Box sx={{ mt: 1, display: 'flex', flexDirection: 'column', gap: 1, alignItems: 'flex-start' }}>
           <Typography variant="caption" sx={{ color: palette.errorText }}>
@@ -150,11 +129,6 @@ export function ConfigFieldRow({
             Request again
           </TextAction>
         </Box>
-      )}
-      {field.description && !blocking && !missing && (
-        <Typography variant="caption" sx={{ color: palette.textSecondary, display: 'block', mt: '4px' }}>
-          {field.description}
-        </Typography>
       )}
       {field.inputType === 'multiselect' && field.key === 'facebook_pages' && (
         <Box sx={{ mt: 1 }}>

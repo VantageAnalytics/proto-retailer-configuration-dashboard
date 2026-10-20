@@ -1,188 +1,193 @@
-import { Box, IconButton, Tooltip, Typography } from '@mui/material';
+import { useState } from 'react';
+import { Box, Button, IconButton, TextField, Tooltip, Typography } from '@mui/material';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faAngleRight, faClockRotateLeft } from '@fortawesome/free-solid-svg-icons';
-import { brand, cardShadow, palette } from '../theme';
-import { ErrorPill, PendingPill, Pill, SourceTag, SuccessPill } from './ui';
+import { brand, palette } from '../theme';
+import { ErrorPill, PendingPill, Pill, SuccessPill } from './ui';
 import type { ChangeEvent } from '../types';
 
-type Filter = 'all' | 'capability';
+/** Width of the history rail reserved inside each card, collapsed and expanded. */
+const RAIL_WIDTH = 300;
+const RAIL_COLLAPSED_WIDTH = 40;
+
+/**
+ * The rail sits inside the card body, so its divider is pulled out to the card's
+ * header rule and bottom padding edge and the inset is given back as padding.
+ */
+const railBleed = {
+  alignSelf: 'stretch',
+  mt: -3,
+  mb: -3,
+  pt: 3,
+  pb: 3,
+} as const;
 
 function formatTimestamp(iso: string): string {
   return new Date(iso).toLocaleString(undefined, {
     month: 'short',
     day: 'numeric',
+    year: 'numeric',
     hour: 'numeric',
     minute: '2-digit',
   });
 }
 
-function FilterChip({
-  label,
-  selected,
-  onClick,
-}: {
-  label: string;
-  selected: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <Box
-      component="button"
-      type="button"
-      onClick={onClick}
-      sx={{
-        font: 'inherit',
-        fontSize: 12,
-        fontWeight: selected ? 600 : 400,
-        borderRadius: '8px',
-        px: 1.5,
-        py: '4px',
-        cursor: 'pointer',
-        bgcolor: selected ? brand.orangeTint : palette.pillBg,
-        color: selected ? brand.orangeDark : palette.textSecondary,
-        border: `1px solid ${selected ? brand.orangeLight : 'transparent'}`,
-        '&:hover': selected ? {} : { bgcolor: '#EDEDED' },
-      }}
-    >
-      {label}
-    </Box>
-  );
-}
-
+/** The author line and the description differ per kind; the frame around them doesn't. */
 function Entry({ event }: { event: ChangeEvent }) {
   return (
-    <Box sx={{ borderBottom: `1px solid ${palette.border}`, pb: 2, mb: 2, '&:last-of-type': { border: 'none', mb: 0 } }}>
-      <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 1 }}>
-        <Typography variant="body2" sx={{ fontWeight: 600 }}>
-          {event.settingLabel}
-        </Typography>
-        {event.status === 'applied' && <SuccessPill>Applied</SuccessPill>}
-        {event.status === 'pending' && <PendingPill>Pending</PendingPill>}
-        {event.status === 'declined' && <ErrorPill>Declined</ErrorPill>}
-      </Box>
-
-      <Typography variant="caption" sx={{ color: palette.textSecondary, display: 'block', mt: '2px' }}>
-        {event.capabilityId}
-      </Typography>
-
-      <Typography variant="body2" sx={{ mt: 1 }}>
-        <Box component="span" sx={{ color: palette.textSecondary }}>
-          {event.from}
-        </Box>{' '}
-        → <Box component="span" sx={{ fontWeight: 600 }}>{event.to}</Box>
-      </Typography>
-
-      <Typography variant="caption" sx={{ color: palette.textSecondary, display: 'block', mt: 1 }}>
-        Requested by {event.requestedBy}
-      </Typography>
+    <Box
+      sx={{ borderBottom: `1px solid ${palette.border}`, pb: 1.5, mb: 1.5, '&:last-of-type': { border: 'none', mb: 0 } }}
+    >
       <Typography variant="caption" sx={{ color: palette.textSecondary, display: 'block' }}>
-        {event.status === 'pending'
-          ? 'Awaiting approval'
-          : `${event.status === 'declined' ? 'Declined' : 'Approved'} by ${event.approvedBy}`}
+        <Box component="span" sx={{ fontWeight: 600 }}>
+          {event.actor}
+        </Box>{' '}
+        · {formatTimestamp(event.timestamp)}
       </Typography>
-      {event.reason && (
-        <Typography variant="caption" sx={{ color: palette.errorText, display: 'block', mt: '2px' }}>
-          {event.reason}
+
+      {event.kind === 'note' ? (
+        <Typography variant="caption" sx={{ display: 'block', mt: 0.5 }}>
+          {event.body}
         </Typography>
+      ) : (
+        <>
+          <Typography variant="caption" sx={{ display: 'block', mt: 0.5, fontWeight: 600 }}>
+            {event.settingLabel}: {event.from} → {event.to}
+          </Typography>
+          {event.reason && (
+            <Typography
+              variant="caption"
+              sx={{
+                color: event.status === 'declined' ? palette.errorText : palette.textSecondary,
+                display: 'block',
+              }}
+            >
+              {event.reason}
+            </Typography>
+          )}
+        </>
       )}
 
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 1 }}>
-        <SourceTag source={event.source} />
-        <Pill>{formatTimestamp(event.timestamp)}</Pill>
+      <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 0.5, mt: 1 }}>
+        {event.kind === 'note' && <Pill>Note</Pill>}
+        {event.kind === 'change' && event.status === 'applied' && <SuccessPill>Approved</SuccessPill>}
+        {event.kind === 'change' && event.status === 'pending' && <PendingPill>Requested</PendingPill>}
+        {event.kind === 'change' && event.status === 'declined' && <ErrorPill>Declined</ErrorPill>}
       </Box>
     </Box>
   );
 }
 
-export function ChangeHistoryPanel({
+function NoteComposer({ onAddNote }: { onAddNote: (body: string) => void }) {
+  const [body, setBody] = useState('');
+  const trimmed = body.trim();
+
+  function submit() {
+    if (!trimmed) return;
+    onAddNote(trimmed);
+    setBody('');
+  }
+
+  return (
+    <Box sx={{ mt: 2 }}>
+      <TextField
+        value={body}
+        onChange={(e) => setBody(e.target.value)}
+        // Enter submits so a short note doesn't need a trip to the button; Shift+Enter
+        // still breaks the line for longer ones.
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            submit();
+          }
+        }}
+        placeholder="Add a note to the change history"
+        aria-label="Add a note to the change history"
+        multiline
+        minRows={3}
+        size="small"
+        fullWidth
+      />
+      <Button
+        variant="contained"
+        size="small"
+        onClick={submit}
+        disabled={!trimmed}
+        sx={{ mt: 1 }}
+      >
+        Add note
+      </Button>
+    </Box>
+  );
+}
+
+/**
+ * Change history for a single card, shown in a rail on the right of the card body.
+ * The rail keeps its column when collapsed so the card content doesn't reflow, and
+ * grows with the card instead of scrolling inside a fixed height.
+ */
+export function CardChangeHistory({
   events,
-  activeCapabilityId,
   collapsed,
   onToggleCollapsed,
-  filter,
-  onFilterChange,
+  onAddNote,
 }: {
   events: ChangeEvent[];
-  activeCapabilityId: string | null;
   collapsed: boolean;
   onToggleCollapsed: () => void;
-  filter: Filter;
-  onFilterChange: (next: Filter) => void;
+  onAddNote: (body: string) => void;
 }) {
   if (collapsed) {
     return (
       <Box
         sx={{
-          width: 48,
+          width: RAIL_COLLAPSED_WIDTH,
           flexShrink: 0,
-          bgcolor: 'background.paper',
-          borderRadius: '8px',
-          boxShadow: cardShadow,
-          py: 2,
+          borderLeft: `1px solid ${palette.border}`,
+          ...railBleed,
+          pl: 0.5,
           display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          gap: 2,
-          position: 'sticky',
-          top: 24,
-          alignSelf: 'flex-start',
+          justifyContent: 'center',
+          alignItems: 'flex-start',
         }}
       >
         <Tooltip title="Show change history">
           <IconButton onClick={onToggleCollapsed} size="small" aria-label="Show change history">
-            <FontAwesomeIcon icon={faClockRotateLeft} style={{ fontSize: 14, color: brand.orange }} />
+            <FontAwesomeIcon icon={faClockRotateLeft} style={{ fontSize: 14, color: brand.periwinkleDark }} />
           </IconButton>
         </Tooltip>
       </Box>
     );
   }
 
-  const visible =
-    filter === 'capability' && activeCapabilityId
-      ? events.filter((e) => e.capabilityId === activeCapabilityId)
-      : events;
-
   return (
     <Box
       sx={{
-        width: 320,
+        width: RAIL_WIDTH,
         flexShrink: 0,
-        bgcolor: 'background.paper',
-        borderRadius: '8px',
-        boxShadow: cardShadow,
-        p: 2.5,
-        position: 'sticky',
-        top: 24,
-        alignSelf: 'flex-start',
-        maxHeight: 'calc(100vh - 48px)',
-        overflowY: 'auto',
+        borderLeft: `1px solid ${palette.border}`,
+        ...railBleed,
+        pl: 2.5,
       }}
     >
-      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <Typography variant="h2">Change history</Typography>
-        <Tooltip title="Collapse panel">
+      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+        <Typography variant="h3">Change history</Typography>
+        <Tooltip title="Collapse change history">
           <IconButton onClick={onToggleCollapsed} size="small" aria-label="Collapse change history">
             <FontAwesomeIcon icon={faAngleRight} style={{ fontSize: 14, color: palette.textSecondary }} />
           </IconButton>
         </Tooltip>
       </Box>
 
-      <Box sx={{ display: 'flex', gap: 2, mt: 2, mb: 3 }}>
-        <FilterChip label="All" selected={filter === 'all'} onClick={() => onFilterChange('all')} />
-        <FilterChip
-          label="This capability"
-          selected={filter === 'capability'}
-          onClick={() => onFilterChange('capability')}
-        />
-      </Box>
-
-      {visible.length === 0 ? (
+      {events.length === 0 ? (
         <Typography variant="body2" sx={{ color: palette.textSecondary }}>
           No changes recorded yet.
         </Typography>
       ) : (
-        visible.map((event) => <Entry key={event.id} event={event} />)
+        events.map((event) => <Entry key={event.id} event={event} />)
       )}
+
+      <NoteComposer onAddNote={onAddNote} />
     </Box>
   );
 }

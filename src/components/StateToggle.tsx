@@ -4,9 +4,9 @@ import type { ToggleState } from '../types';
 
 /**
  * Guideline toggle: the circle is deliberately larger than the track.
- * On is an orange circle at the right of a lighter-orange track; off is a white
- * circle over a grey track. Pending borrows the on geometry in amber so the
- * requested-but-not-applied state reads differently from Live.
+ * On is a deep Periwinkle circle at the right of a Periwinkle track; off is a white
+ * circle over a grey track. Pending looks the same as Live because the toggle only
+ * reports on/off; the Pending pill beside the label carries the approval state.
  */
 export function StateToggle({
   state,
@@ -26,21 +26,9 @@ export function StateToggle({
 }) {
   const isOn = state === 'live' || state === 'pending';
 
-  const trackColor = disabled
-    ? '#EDEDED'
-    : state === 'live'
-      ? brand.orangeLight
-      : state === 'pending'
-        ? palette.warningBorder
-        : palette.greyTrack;
+  const trackColor = disabled ? '#EDEDED' : isOn ? brand.periwinkle : palette.greyTrack;
 
-  const circleColor = disabled
-    ? '#F5F5F5'
-    : state === 'live'
-      ? brand.orange
-      : state === 'pending'
-        ? palette.amber
-        : '#FFFFFF';
+  const circleColor = disabled ? '#F5F5F5' : isOn ? brand.periwinkleDark : '#FFFFFF';
 
   const control = (
     <Box
@@ -53,8 +41,8 @@ export function StateToggle({
       onClick={presentational ? undefined : () => onChange?.(!isOn)}
       sx={{
         position: 'relative',
-        width: 44,
-        height: 24,
+        width: 34,
+        height: 18,
         border: 'none',
         background: 'none',
         padding: 0,
@@ -70,8 +58,8 @@ export function StateToggle({
           position: 'absolute',
           left: 2,
           right: 2,
-          height: 14,
-          borderRadius: 7,
+          height: 10,
+          borderRadius: 5,
           bgcolor: trackColor,
           transition: 'background-color 120ms ease',
         }}
@@ -80,9 +68,9 @@ export function StateToggle({
         sx={{
           position: 'absolute',
           top: 0,
-          left: isOn ? 20 : 0,
-          width: 24,
-          height: 24,
+          left: isOn ? 16 : 0,
+          width: 18,
+          height: 18,
           borderRadius: '50%',
           bgcolor: circleColor,
           border: isOn ? 'none' : `1px solid ${palette.border}`,

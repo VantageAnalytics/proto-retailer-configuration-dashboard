@@ -30,8 +30,8 @@ The layout targets 1440px, holds a 1280px minimum, and stays fluid up to 1920px.
 
 ## Demoing the states
 
-The Ulta mock is the primary scenario: Meta is **Pending approval** and the checklist flags a missing
-ad account ID.
+The default retailer mock is the primary scenario: Meta is **Pending approval** and the checklist flags
+a missing ad account ID.
 
 Switch the retailer selector to **The Home Depot US** for a complete setup, where Meta computes to
 **Live**. Clearing its Ad account ID and saving moves the same card to **Incomplete**. Together the

@@ -5,7 +5,7 @@ import { faAngleDown } from '@fortawesome/free-solid-svg-icons';
 import { brand, palette } from '../theme';
 
 /**
- * Guideline multiselect: Select All / Unselect All in orange at the top,
+ * Guideline multiselect: Select All / Unselect All in Periwinkle at the top,
  * Cancel and Apply at the bottom. Nothing commits until Apply.
  */
 export function MultiSelectField({
@@ -58,7 +58,7 @@ export function MultiSelectField({
           textAlign: 'left',
           color: value.length ? 'text.primary' : palette.textSecondary,
           cursor: 'pointer',
-          '&:focus-visible': { outline: `2px solid ${brand.orange}`, outlineOffset: 1 },
+          '&:focus-visible': { outline: `2px solid ${brand.periwinkleDark}`, outlineOffset: 1 },
         }}
       >
         <Box component="span" sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -85,7 +85,7 @@ export function MultiSelectField({
               font: 'inherit',
               fontSize: 14,
               fontWeight: 600,
-              color: brand.orange,
+              color: brand.periwinkleDark,
               cursor: 'pointer',
             }}
           >
@@ -103,7 +103,7 @@ export function MultiSelectField({
               }
               sx={{ gap: 1 }}
             >
-              <Checkbox checked={checked} size="small" sx={{ p: 0, color: palette.border, '&.Mui-checked': { color: brand.orange } }} />
+              <Checkbox checked={checked} size="small" sx={{ p: 0, color: palette.border, '&.Mui-checked': { color: brand.periwinkleDark } }} />
               <Typography variant="body2">{option}</Typography>
             </MenuItem>
           );

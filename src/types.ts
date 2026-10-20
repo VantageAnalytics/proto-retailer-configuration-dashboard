@@ -70,22 +70,49 @@ export interface Capability {
   codeNotes: string[];
   /** Placeholder cards show "Details in next iteration" instead of card internals. */
   detailed: boolean;
+  /** Shown when available is false, in place of the card internals. */
+  unavailableReason?: string;
 }
 
-export interface ChangeEvent {
+/** A Retailer global settings section. Settings only, no feature flags. */
+export interface GlobalSection {
+  id: string;
+  name: string;
+  description: string;
+  configs: ConfigField[];
+}
+
+interface ChangeEventBase {
   id: string;
   capabilityId: string;
+  /** Whoever performed this action: the requester, the approver, or the note's author. */
+  actor: string;
+  timestamp: string;
+}
+
+/**
+ * One action taken against a setting or feature flag. Requesting a change and ruling
+ * on it are separate entries, since they are done by different people at different times.
+ */
+export interface SettingChangeEvent extends ChangeEventBase {
+  kind: 'change';
   settingKey: string;
   settingLabel: string;
   from: string;
   to: string;
-  requestedBy: string;
-  approvedBy?: string;
   status: 'applied' | 'pending' | 'declined';
+  /** Why the change was asked for, or what came of it. */
   reason?: string;
   source: Source;
-  timestamp: string;
 }
+
+/** Free-text context left on a card, not tied to any one setting. */
+export interface NoteEvent extends ChangeEventBase {
+  kind: 'note';
+  body: string;
+}
+
+export type ChangeEvent = SettingChangeEvent | NoteEvent;
 
 export interface Retailer {
   id: string;
