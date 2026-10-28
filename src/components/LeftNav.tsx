@@ -1,7 +1,6 @@
 import { useState } from 'react';
-import { Box, Collapse, Typography } from '@mui/material';
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faAngleDown, faAngleUp, faTriangleExclamation } from '@fortawesome/free-solid-svg-icons';
+import { Box, Typography } from '@mui/material';
+import { faTriangleExclamation } from '@fortawesome/free-solid-svg-icons';
 import { brand, palette } from '../theme';
 import { navGroups, globalSettingSections } from '../data/capabilities';
 import { computeCapabilityStatus } from '../logic/status';
@@ -79,7 +78,7 @@ function NavItem({
     >
       <Box
         component="span"
-        sx={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+        sx={{ flex: '0 1 auto', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
       >
         {label}
       </Box>
@@ -89,11 +88,6 @@ function NavItem({
 }
 
 export function LeftNav({ capabilities, selectedId, selectedGroup, onSelect, onSelectGroup }: Props) {
-  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
-
-  const toggleGroup = (group: string) =>
-    setCollapsedGroups((prev) => ({ ...prev, [group]: !prev[group] }));
-
   return (
     <Box component="nav" sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
       {navGroups.map((group) => {
@@ -102,7 +96,6 @@ export function LeftNav({ capabilities, selectedId, selectedGroup, onSelect, onS
         if (!isGlobal && items.length === 0) return null;
 
         const groupActive = group === selectedGroup;
-        const expanded = !collapsedGroups[group];
 
         return (
           <Box key={group}>
@@ -139,52 +132,31 @@ export function LeftNav({ capabilities, selectedId, selectedGroup, onSelect, onS
               >
                 {group}
               </Typography>
-              <Box
-                component="button"
-                type="button"
-                aria-label={expanded ? `Collapse ${group}` : `Expand ${group}`}
-                aria-expanded={expanded}
-                onClick={() => toggleGroup(group)}
-                sx={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  background: 'none',
-                  border: 'none',
-                  color: 'inherit',
-                  py: 0.5,
-                  px: 1,
-                  cursor: 'pointer',
-                }}
-              >
-                <FontAwesomeIcon icon={expanded ? faAngleUp : faAngleDown} style={{ fontSize: 12 }} />
-              </Box>
             </Box>
-            <Collapse in={expanded} unmountOnExit>
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.25 }}>
-                {isGlobal
-                  ? globalSettingSections.map((section) => (
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.25 }}>
+              {isGlobal
+                ? globalSettingSections.map((section) => (
+                    <NavItem
+                      key={section.id}
+                      label={section.name}
+                      selected={selectedId === section.id}
+                      onClick={() => onSelect(section.id)}
+                    />
+                  ))
+                : items.map((capability) => {
+                    const status = computeCapabilityStatus(capability).status;
+                    const chipped = status === 'pending' || status === 'live' || status === 'incomplete';
+                    return (
                       <NavItem
-                        key={section.id}
-                        label={section.name}
-                        selected={selectedId === section.id}
-                        onClick={() => onSelect(section.id)}
+                        key={capability.id}
+                        label={capability.name}
+                        selected={selectedId === capability.id}
+                        onClick={() => onSelect(capability.id)}
+                        chip={chipped ? (expanded) => <NavChip status={status} expanded={expanded} /> : undefined}
                       />
-                    ))
-                  : items.map((capability) => {
-                      const status = computeCapabilityStatus(capability).status;
-                      const chipped = status === 'pending' || status === 'live' || status === 'incomplete';
-                      return (
-                        <NavItem
-                          key={capability.id}
-                          label={capability.name}
-                          selected={selectedId === capability.id}
-                          onClick={() => onSelect(capability.id)}
-                          chip={chipped ? (expanded) => <NavChip status={status} expanded={expanded} /> : undefined}
-                        />
-                      );
-                    })}
-              </Box>
-            </Collapse>
+                    );
+                  })}
+            </Box>
           </Box>
         );
       })}

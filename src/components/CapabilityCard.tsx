@@ -48,6 +48,8 @@ interface Props {
   onAddNote: (body: string) => void;
   registerFieldRef: (key: string, node: HTMLElement | null) => void;
   cardRef: (node: HTMLDivElement | null) => void;
+  /** false pins the card open with no chevron, for the card layout's single expanded view. */
+  collapsible?: boolean;
 }
 
 function SubSectionHeader({ title }: { title: string }) {
@@ -137,6 +139,7 @@ export function CapabilityCard(props: Props) {
     onAddNote,
     registerFieldRef,
     cardRef,
+    collapsible = true,
   } = props;
 
   const [historyCollapsed, setHistoryCollapsed] = useState(false);
@@ -148,14 +151,14 @@ export function CapabilityCard(props: Props) {
   const masterDraft = master ? draft.features[master.key] : undefined;
   const masterOn = masterDraft !== undefined ? masterDraft : master?.state === 'live' || master?.state === 'pending';
 
-  const expandable = capability.available || Boolean(capability.unavailableReason);
+  const expandable = collapsible && (capability.available || Boolean(capability.unavailableReason));
 
   const header = (
     <Box
-      component="button"
-      type="button"
-      onClick={onToggleExpanded}
-      disabled={!expandable}
+      component={collapsible ? 'button' : 'div'}
+      type={collapsible ? 'button' : undefined}
+      onClick={expandable ? onToggleExpanded : undefined}
+      disabled={collapsible ? !expandable : undefined}
       sx={{
         display: 'flex',
         alignItems: 'center',

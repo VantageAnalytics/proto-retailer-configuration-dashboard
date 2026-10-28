@@ -7,9 +7,10 @@ import { buildCapabilities, configGroups, globalSettingSections } from '../data/
 import { buildChangeHistory } from '../data/changeHistory';
 import { currentUser } from '../data/people';
 import { defaultRetailerId } from '../data/retailers';
-import { isEmptyValue } from '../logic/status';
+import { computeCapabilityStatus, isEmptyValue, summaryLine } from '../logic/status';
 import { CapabilityCard, emptyDraft, type Draft } from './CapabilityCard';
 import { CardChangeHistory } from './ChangeHistoryPanel';
+import { CompactCardStrip, type CompactCardItem } from './CompactCardStrip';
 import { ConfigFieldGroup } from './ConfigFieldGroup';
 import { type ConfigValue } from './ConfigFieldRow';
 import { LeftNav } from './LeftNav';
@@ -19,7 +20,13 @@ import type { Capability, ChangeEvent, GlobalSection, Source } from '../types';
 
 type Scope = 'program' | 'retailer' | 'brand';
 
+/** list stacks every card in the group; cards shows small cards above one expanded card. */
+export type Layout = 'list' | 'cards';
+
 const globalSettingsGroup = 'Retailer global settings';
+
+/** Space above the card layout's card row while it is pinned to the top of the window. */
+const CARD_STRIP_GUTTER = 24;
 
 function formatValue(value: ConfigValue): string {
   if (value === null || value === undefined || value === '') return '(empty)';
@@ -99,6 +106,7 @@ function GlobalSettingCard({
   onAddNote,
   registerFieldRef,
   cardRef,
+  collapsible = true,
 }: {
   section: GlobalSection;
   events: ChangeEvent[];
@@ -111,6 +119,7 @@ function GlobalSettingCard({
   onAddNote: (body: string) => void;
   registerFieldRef: (key: string, node: HTMLElement | null) => void;
   cardRef: (node: HTMLDivElement | null) => void;
+  collapsible?: boolean;
 }) {
   const [historyCollapsed, setHistoryCollapsed] = useState(false);
   const unsavedCount = Object.keys(draft.configs).length;
@@ -131,9 +140,9 @@ function GlobalSettingCard({
       }}
     >
       <Box
-        component="button"
-        type="button"
-        onClick={onToggleExpanded}
+        component={collapsible ? 'button' : 'div'}
+        type={collapsible ? 'button' : undefined}
+        onClick={collapsible ? onToggleExpanded : undefined}
         sx={{
           display: 'flex',
           alignItems: 'center',
@@ -145,7 +154,7 @@ function GlobalSettingCard({
           p: 0,
           font: 'inherit',
           textAlign: 'left',
-          cursor: 'pointer',
+          cursor: collapsible ? 'pointer' : 'default',
         }}
       >
         <Box sx={{ minWidth: 0 }}>
@@ -161,7 +170,7 @@ function GlobalSettingCard({
             {missing.length > 0 ? ` · ${missing.length} required setting${missing.length === 1 ? '' : 's'} empty` : ''}
           </Typography>
         </Box>
-        <FontAwesomeIcon icon={expanded ? faAngleUp : faAngleDown} style={{ fontSize: 16 }} />
+        {collapsible && <FontAwesomeIcon icon={expanded ? faAngleUp : faAngleDown} style={{ fontSize: 16 }} />}
       </Box>
 
       <Collapse in={expanded} unmountOnExit>
@@ -205,8 +214,9 @@ function GlobalSettingCard({
   );
 }
 
-export function Dashboard() {
+export function Dashboard({ layout }: { layout: Layout }) {
   const [scope, setScope] = useState<Scope>('retailer');
+  const cardLayout = layout === 'cards';
 
   const [capabilities, setCapabilities] = useState<Capability[]>(() => buildCapabilities(defaultRetailerId));
   const [sections, setSections] = useState<GlobalSection[]>(globalSettingSections);
@@ -218,6 +228,7 @@ export function Dashboard() {
   const [saveTarget, setSaveTarget] = useState<string | null>(null);
 
   const cardRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const cardColumnRef = useRef<HTMLDivElement | null>(null);
   const fieldRefs = useRef<Record<string, HTMLElement | null>>({});
 
   const getDraft = useCallback((id: string) => drafts[id] ?? emptyDraft, [drafts]);
@@ -230,6 +241,10 @@ export function Dashboard() {
     setSelectedNavId(id);
     const capability = capabilities.find((c) => c.id === id);
     setSelectedGroup(capability ? capability.navGroup : globalSettingsGroup);
+    if (cardLayout) {
+      requestAnimationFrame(anchorToCardStrip);
+      return;
+    }
     if (!expandedIds.includes(id)) setExpandedIds([...expandedIds, id]);
     requestAnimationFrame(() => scrollTo(id));
   }
@@ -237,6 +252,23 @@ export function Dashboard() {
   function handleGroupSelect(group: string) {
     setSelectedGroup(group);
     setSelectedNavId(null);
+    if (cardLayout) requestAnimationFrame(anchorToCardStrip);
+  }
+
+  function handleCardSelect(id: string) {
+    setSelectedNavId(id);
+    requestAnimationFrame(anchorToCardStrip);
+  }
+
+  /**
+   * In the card layout, switching cards only scrolls when the reader is already below the
+   * card row, and then only far enough that the new card starts right under it.
+   */
+  function anchorToCardStrip() {
+    const column = cardColumnRef.current;
+    if (!column) return;
+    const target = column.getBoundingClientRect().top + window.scrollY - CARD_STRIP_GUTTER;
+    if (window.scrollY > target) window.scrollTo({ top: target, behavior: 'smooth' });
   }
 
   function toggleExpanded(id: string) {
@@ -417,6 +449,45 @@ export function Dashboard() {
   /** Each card owns the slice of history for its own capability or section. */
   const eventsFor = (ownerId: string) => history.filter((event) => event.capabilityId === ownerId);
 
+  const visibleIds =
+    selectedGroup === globalSettingsGroup ? sections.map((s) => s.id) : visibleCapabilities.map((c) => c.id);
+  const activeCardId = selectedNavId && visibleIds.includes(selectedNavId) ? selectedNavId : (visibleIds[0] ?? null);
+
+  const compactItems: CompactCardItem[] =
+    selectedGroup === globalSettingsGroup
+      ? sections.map((section) => {
+          const pending = section.configs.filter((field) => field.state === 'pending').length;
+          return {
+            id: section.id,
+            name: section.name,
+            caption: section.description,
+            summary: `${section.configs.length} settings${pending > 0 ? ` · ${pending} pending` : ''}`,
+          };
+        })
+      : visibleCapabilities.map((capability) => {
+          const master = capability.features.find((f) => f.key === capability.masterFeatureKey);
+          const masterDraft = master ? getDraft(capability.id).features[master.key] : undefined;
+          const masterState = masterDraft !== undefined ? (masterDraft ? 'live' : 'off') : (master?.state ?? 'off');
+          return {
+            id: capability.id,
+            name: capability.name,
+            caption: capability.subtitle,
+            summary: summaryLine(capability),
+            status: computeCapabilityStatus(capability).status,
+            toggle: {
+              state: masterState,
+              disabled: !capability.available || !master,
+              disabledReason: !capability.available ? 'Not available for this program' : undefined,
+              onChange: (next: boolean) => {
+                if (!master) return;
+                setSelectedNavId(capability.id);
+                handleFeatureChange(capability.id, master.key, next);
+              },
+            },
+          };
+        });
+
+
   return (
     <Box sx={{ minHeight: 'calc(100vh - 64px)', bgcolor: 'background.default' }}>
       <Box sx={{ maxWidth: 1920, minWidth: 1280, mx: 'auto', px: 4, py: 3 }}>
@@ -449,57 +520,96 @@ export function Dashboard() {
               >
                 <LeftNav
                   capabilities={capabilities}
-                  selectedId={selectedNavId}
+                  selectedId={cardLayout ? activeCardId : selectedNavId}
                   selectedGroup={selectedGroup}
                   onSelect={handleNavSelect}
                   onSelectGroup={handleGroupSelect}
                 />
               </Box>
 
-              <Box sx={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 3 }}>
+              <Box
+                ref={cardColumnRef}
+                sx={{
+                  flex: 1,
+                  minWidth: 0,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 3,
+                  // Swapping the expanded card would otherwise let the browser's scroll anchoring jump the page.
+                  overflowAnchor: 'none',
+                }}
+              >
+                {cardLayout && (
+                  <Box
+                    sx={{
+                      position: 'sticky',
+                      top: 0,
+                      zIndex: 2,
+                      bgcolor: 'background.default',
+                      // The pull-up keeps the row in place while giving it a gutter above when pinned.
+                      mt: `-${CARD_STRIP_GUTTER}px`,
+                      pt: `${CARD_STRIP_GUTTER}px`,
+                      pb: 1,
+                    }}
+                  >
+                    <CompactCardStrip
+                      key={selectedGroup}
+                      items={compactItems}
+                      selectedId={activeCardId}
+                      onSelect={handleCardSelect}
+                    />
+                  </Box>
+                )}
+
                 {selectedGroup === globalSettingsGroup &&
-                  sections.map((section) => (
-                    <GlobalSettingCard
-                      key={section.id}
-                      section={section}
-                      events={eventsFor(section.id)}
-                      expanded={expandedIds.includes(section.id)}
-                      onToggleExpanded={() => toggleExpanded(section.id)}
-                      draft={getDraft(section.id)}
-                      onConfigChange={(key, next) => handleConfigChange(section.id, key, next)}
-                      onSave={() => setSaveTarget(section.id)}
-                      onDiscard={() => discard(section.id)}
-                      onAddNote={(body) => addNote(section.id, body)}
+                  sections
+                    .filter((section) => !cardLayout || section.id === activeCardId)
+                    .map((section) => (
+                      <GlobalSettingCard
+                        key={section.id}
+                        collapsible={!cardLayout}
+                        section={section}
+                        events={eventsFor(section.id)}
+                        expanded={cardLayout || expandedIds.includes(section.id)}
+                        onToggleExpanded={() => toggleExpanded(section.id)}
+                        draft={getDraft(section.id)}
+                        onConfigChange={(key, next) => handleConfigChange(section.id, key, next)}
+                        onSave={() => setSaveTarget(section.id)}
+                        onDiscard={() => discard(section.id)}
+                        onAddNote={(body) => addNote(section.id, body)}
+                        registerFieldRef={(key, node) => {
+                          fieldRefs.current[key] = node;
+                        }}
+                        cardRef={(node) => {
+                          cardRefs.current[section.id] = node;
+                        }}
+                      />
+                    ))}
+
+                {visibleCapabilities
+                  .filter((capability) => !cardLayout || capability.id === activeCardId)
+                  .map((capability) => (
+                    <CapabilityCard
+                      key={capability.id}
+                      collapsible={!cardLayout}
+                      capability={capability}
+                      events={eventsFor(capability.id)}
+                      expanded={cardLayout || expandedIds.includes(capability.id)}
+                      onToggleExpanded={() => toggleExpanded(capability.id)}
+                      draft={getDraft(capability.id)}
+                      onFeatureChange={(key, next) => handleFeatureChange(capability.id, key, next)}
+                      onConfigChange={(key, next) => handleConfigChange(capability.id, key, next)}
+                      onSave={() => setSaveTarget(capability.id)}
+                      onDiscard={() => discard(capability.id)}
+                      onAddNote={(body) => addNote(capability.id, body)}
                       registerFieldRef={(key, node) => {
                         fieldRefs.current[key] = node;
                       }}
                       cardRef={(node) => {
-                        cardRefs.current[section.id] = node;
+                        cardRefs.current[capability.id] = node;
                       }}
                     />
                   ))}
-
-                {visibleCapabilities.map((capability) => (
-                  <CapabilityCard
-                    key={capability.id}
-                    capability={capability}
-                    events={eventsFor(capability.id)}
-                    expanded={expandedIds.includes(capability.id)}
-                    onToggleExpanded={() => toggleExpanded(capability.id)}
-                    draft={getDraft(capability.id)}
-                    onFeatureChange={(key, next) => handleFeatureChange(capability.id, key, next)}
-                    onConfigChange={(key, next) => handleConfigChange(capability.id, key, next)}
-                    onSave={() => setSaveTarget(capability.id)}
-                    onDiscard={() => discard(capability.id)}
-                    onAddNote={(body) => addNote(capability.id, body)}
-                    registerFieldRef={(key, node) => {
-                      fieldRefs.current[key] = node;
-                    }}
-                    cardRef={(node) => {
-                      cardRefs.current[capability.id] = node;
-                    }}
-                  />
-                ))}
               </Box>
             </Box>
           )}
