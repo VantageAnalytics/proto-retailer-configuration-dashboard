@@ -1,4 +1,5 @@
 import type { ChangeEvent } from '../types';
+import { defaultRetailerId } from './retailers';
 
 const APPROVAL_NOTE = 'Request approved in LaunchDarkly — flag is now live.';
 
@@ -108,6 +109,6 @@ const primaryRetailer: ChangeEvent[] = [
 ];
 
 export function buildChangeHistory(retailerId: string): ChangeEvent[] {
-  if (retailerId === 'retailer') return primaryRetailer;
+  if (retailerId === defaultRetailerId) return primaryRetailer;
   return [];
 }

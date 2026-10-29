@@ -50,6 +50,8 @@ interface Props {
   cardRef: (node: HTMLDivElement | null) => void;
   /** false pins the card open with no chevron, for the card layout's single expanded view. */
   collapsible?: boolean;
+  /** false drops the history rail when the page shows history in its own section. */
+  showHistory?: boolean;
 }
 
 function SubSectionHeader({ title }: { title: string }) {
@@ -140,6 +142,7 @@ export function CapabilityCard(props: Props) {
     registerFieldRef,
     cardRef,
     collapsible = true,
+    showHistory = true,
   } = props;
 
   const [historyCollapsed, setHistoryCollapsed] = useState(false);
@@ -306,12 +309,14 @@ export function CapabilityCard(props: Props) {
             )}
           </Box>
 
-            <CardChangeHistory
-              events={events}
-              collapsed={historyCollapsed}
-              onToggleCollapsed={() => setHistoryCollapsed(!historyCollapsed)}
-              onAddNote={onAddNote}
-            />
+            {showHistory && (
+              <CardChangeHistory
+                events={events}
+                collapsed={historyCollapsed}
+                onToggleCollapsed={() => setHistoryCollapsed(!historyCollapsed)}
+                onAddNote={onAddNote}
+              />
+            )}
           </Box>
 
           {unsavedCount > 0 && <UnsavedBar count={unsavedCount} onDiscard={onDiscard} onSave={onSave} />}

@@ -1,8 +1,8 @@
-import { useState } from 'react';
-import { Box, Button, IconButton, TextField, Tooltip, Typography } from '@mui/material';
+import { useId, useState } from 'react';
+import { Box, Button, IconButton, MenuItem, Select, TextField, Tooltip, Typography } from '@mui/material';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faAngleRight, faClockRotateLeft } from '@fortawesome/free-solid-svg-icons';
-import { brand, palette } from '../theme';
+import { brand, cardShadow, palette } from '../theme';
 import { ErrorPill, PendingPill, Pill, SuccessPill } from './ui';
 import type { ChangeEvent } from '../types';
 
@@ -33,11 +33,19 @@ function formatTimestamp(iso: string): string {
 }
 
 /** The author line and the description differ per kind; the frame around them doesn't. */
-function Entry({ event }: { event: ChangeEvent }) {
+function Entry({ event, ownerName }: { event: ChangeEvent; ownerName?: string }) {
   return (
     <Box
       sx={{ borderBottom: `1px solid ${palette.border}`, pb: 1.5, mb: 1.5, '&:last-of-type': { border: 'none', mb: 0 } }}
     >
+      {ownerName && (
+        <Typography
+          variant="caption"
+          sx={{ color: brand.periwinkleDark, display: 'block', fontWeight: 600, mb: 0.25 }}
+        >
+          {ownerName}
+        </Typography>
+      )}
       <Typography variant="caption" sx={{ color: palette.textSecondary, display: 'block' }}>
         <Box component="span" sx={{ fontWeight: 600 }}>
           {event.actor}
@@ -188,6 +196,135 @@ export function CardChangeHistory({
       )}
 
       <NoteComposer onAddNote={onAddNote} />
+    </Box>
+  );
+}
+
+/** A nav group and the capabilities or settings sections under it, as the history filter lists them. */
+export interface HistoryOwnerGroup {
+  group: string;
+  owners: { id: string; name: string }[];
+}
+
+const ALL = 'all';
+const groupValue = (group: string) => `group:${group}`;
+
+/**
+ * The page's whole change history in its own section, filterable to one nav group
+ * or one capability. Notes can only be added once a single capability is picked,
+ * since every note belongs to one.
+ */
+export function ChangeHistorySection({
+  events,
+  groups,
+  onAddNote,
+}: {
+  events: ChangeEvent[];
+  groups: HistoryOwnerGroup[];
+  onAddNote: (ownerId: string, body: string) => void;
+}) {
+  const labelId = useId();
+  const [filter, setFilter] = useState(ALL);
+
+  const ownerNames = new Map(groups.flatMap((g) => g.owners.map((o) => [o.id, o.name] as const)));
+  const countFor = (ids: string[]) => events.filter((event) => ids.includes(event.capabilityId)).length;
+
+  const selectedGroup = groups.find((g) => groupValue(g.group) === filter);
+  const selectedOwner = ownerNames.has(filter) ? filter : null;
+
+  const visible =
+    filter === ALL
+      ? events
+      : selectedGroup
+        ? events.filter((event) => selectedGroup.owners.some((o) => o.id === event.capabilityId))
+        : events.filter((event) => event.capabilityId === filter);
+
+  const filterLabel = (value: string) => {
+    if (value === ALL) return 'All history';
+    const group = groups.find((g) => groupValue(g.group) === value);
+    if (group) return `All ${group.group}`;
+    return ownerNames.get(value) ?? 'All history';
+  };
+
+  return (
+    <Box
+      component="section"
+      aria-label="Change history"
+      sx={{ bgcolor: 'background.paper', borderRadius: '8px', boxShadow: cardShadow, p: 3 }}
+    >
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+        <FontAwesomeIcon icon={faClockRotateLeft} style={{ fontSize: 14, color: brand.periwinkleDark }} />
+        <Typography variant="h2">Change history</Typography>
+      </Box>
+      <Typography variant="caption" sx={{ color: palette.textSecondary, display: 'block', mt: '2px' }}>
+        Every change and note on this page
+      </Typography>
+
+      <Typography id={labelId} variant="body2" component="div" sx={{ fontWeight: 600, mt: 2, mb: 0.75 }}>
+        Show
+      </Typography>
+      <Select
+        fullWidth
+        size="small"
+        value={filter}
+        onChange={(e) => setFilter(e.target.value)}
+        renderValue={filterLabel}
+        slotProps={{ input: { 'aria-labelledby': labelId } }}
+        MenuProps={{ slotProps: { paper: { sx: { maxHeight: 420 } } } }}
+      >
+        <MenuItem value={ALL} sx={{ justifyContent: 'space-between', gap: 2, fontWeight: 600 }}>
+          All history
+          <Count n={events.length} />
+        </MenuItem>
+        {groups.flatMap((group) => [
+          <MenuItem
+            key={group.group}
+            value={groupValue(group.group)}
+            sx={{ justifyContent: 'space-between', gap: 2, fontWeight: 600, borderTop: `1px solid ${palette.border}` }}
+          >
+            {group.group}
+            <Count n={countFor(group.owners.map((o) => o.id))} />
+          </MenuItem>,
+          ...group.owners.map((owner) => (
+            <MenuItem key={owner.id} value={owner.id} sx={{ justifyContent: 'space-between', gap: 2, pl: 4 }}>
+              {owner.name}
+              <Count n={countFor([owner.id])} />
+            </MenuItem>
+          )),
+        ])}
+      </Select>
+
+      <Box sx={{ mt: 2.5 }}>
+        {visible.length === 0 ? (
+          <Typography variant="body2" sx={{ color: palette.textSecondary }}>
+            No changes recorded yet.
+          </Typography>
+        ) : (
+          visible.map((event) => (
+            <Entry
+              key={event.id}
+              event={event}
+              ownerName={selectedOwner ? undefined : ownerNames.get(event.capabilityId)}
+            />
+          ))
+        )}
+      </Box>
+
+      {selectedOwner ? (
+        <NoteComposer key={selectedOwner} onAddNote={(body) => onAddNote(selectedOwner, body)} />
+      ) : (
+        <Typography variant="caption" sx={{ color: palette.textSecondary, display: 'block', mt: 2 }}>
+          Pick a single capability to add a note.
+        </Typography>
+      )}
+    </Box>
+  );
+}
+
+function Count({ n }: { n: number }) {
+  return (
+    <Box component="span" sx={{ fontSize: 12, color: palette.textSecondary, fontWeight: 400 }}>
+      {n}
     </Box>
   );
 }

@@ -1,22 +1,26 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { Box, Collapse, Divider, Typography } from '@mui/material';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faAngleDown, faAngleUp } from '@fortawesome/free-solid-svg-icons';
 import { cardShadow, palette } from '../theme';
-import { buildCapabilities, configGroups, globalSettingSections } from '../data/capabilities';
+import { buildCapabilities, configGroups, globalSettingSections, navGroups } from '../data/capabilities';
 import { buildChangeHistory } from '../data/changeHistory';
 import { currentUser } from '../data/people';
-import { defaultRetailerId } from '../data/retailers';
-import { computeCapabilityStatus, isEmptyValue, summaryLine } from '../logic/status';
+import { defaultProgramId, defaultRetailerId, programs, retailers, retailersForProgram } from '../data/retailers';
+import { useCases } from '../data/useCases';
+import { computeCapabilityStatus, formatValue, isEmptyValue, summaryLine } from '../logic/status';
 import { CapabilityCard, emptyDraft, type Draft } from './CapabilityCard';
-import { CardChangeHistory } from './ChangeHistoryPanel';
+import { CardChangeHistory, ChangeHistorySection, type HistoryOwnerGroup } from './ChangeHistoryPanel';
 import { CompactCardStrip, type CompactCardItem } from './CompactCardStrip';
 import { ConfigFieldGroup } from './ConfigFieldGroup';
 import { type ConfigValue } from './ConfigFieldRow';
 import { LeftNav } from './LeftNav';
 import { SaveModal, type PendingChange } from './SaveModal';
+import { ScopeSelect } from './ScopeSelectors';
+import { UseCasePicker } from './UseCasePicker';
+import { UseCaseWizard } from './UseCaseWizard';
 import { Banner, PendingPill, SectionHeading, UnsavedBar } from './ui';
-import type { Capability, ChangeEvent, GlobalSection, Source } from '../types';
+import type { Capability, ChangeEvent, ConfigField, GlobalSection, Source, UseCase } from '../types';
 
 type Scope = 'program' | 'retailer' | 'brand';
 
@@ -28,12 +32,8 @@ const globalSettingsGroup = 'Retailer global settings';
 /** Space above the card layout's card row while it is pinned to the top of the window. */
 const CARD_STRIP_GUTTER = 24;
 
-function formatValue(value: ConfigValue): string {
-  if (value === null || value === undefined || value === '') return '(empty)';
-  if (typeof value === 'boolean') return value ? 'On' : 'Off';
-  if (Array.isArray(value)) return value.length ? value.join(', ') : '(empty)';
-  return value;
-}
+/** Room around the standalone history card so its shadow isn't cut off by its scroll container. */
+const HISTORY_SHADOW_ROOM = 20;
 
 function Tabs({ scope, onChange }: { scope: Scope; onChange: (next: Scope) => void }) {
   const tabs: { id: Scope; label: string }[] = [
@@ -107,6 +107,7 @@ function GlobalSettingCard({
   registerFieldRef,
   cardRef,
   collapsible = true,
+  showHistory = true,
 }: {
   section: GlobalSection;
   events: ChangeEvent[];
@@ -120,6 +121,7 @@ function GlobalSettingCard({
   registerFieldRef: (key: string, node: HTMLElement | null) => void;
   cardRef: (node: HTMLDivElement | null) => void;
   collapsible?: boolean;
+  showHistory?: boolean;
 }) {
   const [historyCollapsed, setHistoryCollapsed] = useState(false);
   const unsavedCount = Object.keys(draft.configs).length;
@@ -200,12 +202,14 @@ function GlobalSettingCard({
           ))}
           </Box>
 
-          <CardChangeHistory
-            events={events}
-            collapsed={historyCollapsed}
-            onToggleCollapsed={() => setHistoryCollapsed(!historyCollapsed)}
-            onAddNote={onAddNote}
-          />
+          {showHistory && (
+            <CardChangeHistory
+              events={events}
+              collapsed={historyCollapsed}
+              onToggleCollapsed={() => setHistoryCollapsed(!historyCollapsed)}
+              onAddNote={onAddNote}
+            />
+          )}
         </Box>
 
         {unsavedCount > 0 && <UnsavedBar count={unsavedCount} onDiscard={onDiscard} onSave={onSave} />}
@@ -214,7 +218,7 @@ function GlobalSettingCard({
   );
 }
 
-export function Dashboard({ layout }: { layout: Layout }) {
+export function Dashboard({ layout, separateHistory }: { layout: Layout; separateHistory: boolean }) {
   const [scope, setScope] = useState<Scope>('retailer');
   const cardLayout = layout === 'cards';
 
@@ -226,6 +230,12 @@ export function Dashboard({ layout }: { layout: Layout }) {
   const [selectedNavId, setSelectedNavId] = useState<string | null>('meta');
   const [selectedGroup, setSelectedGroup] = useState<string>('Channels');
   const [saveTarget, setSaveTarget] = useState<string | null>(null);
+  const [programId, setProgramId] = useState(defaultProgramId);
+  const [retailerId, setRetailerId] = useState(defaultRetailerId);
+  const [activeUseCase, setActiveUseCase] = useState<UseCase | null>(null);
+
+  const programRetailers = retailersForProgram(programId);
+  const retailer = retailers.find((r) => r.id === retailerId)!;
 
   const cardRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const cardColumnRef = useRef<HTMLDivElement | null>(null);
@@ -236,6 +246,29 @@ export function Dashboard({ layout }: { layout: Layout }) {
   const scrollTo = useCallback((id: string) => {
     cardRefs.current[id]?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }, []);
+
+  /** Each retailer has its own settings and history, so switching drops any unsaved edits. */
+  function changeRetailer(id: string) {
+    setRetailerId(id);
+    setCapabilities(buildCapabilities(id));
+    setSections(globalSettingSections);
+    setHistory(buildChangeHistory(id));
+    setDrafts({});
+    setSaveTarget(null);
+  }
+
+  function changeProgram(id: string) {
+    setProgramId(id);
+    const first = retailersForProgram(id)[0];
+    if (first) changeRetailer(first.id);
+  }
+
+  function submitUseCase(useCase: UseCase, submitted: Record<string, Draft>) {
+    submitForApproval(submitted, `Requested through the ${useCase.name} use case.`);
+    setActiveUseCase(null);
+    const primary = useCase.features[0]?.ownerId;
+    if (primary && capabilities.some((c) => c.id === primary)) handleNavSelect(primary);
+  }
 
   function handleNavSelect(id: string) {
     setSelectedNavId(id);
@@ -311,15 +344,12 @@ export function Dashboard({ layout }: { layout: Layout }) {
     setDrafts((prev) => ({ ...prev, [capabilityId]: emptyDraft }));
   }
 
-  const pendingChanges: PendingChange[] = useMemo(() => {
-    if (!saveTarget) return [];
-    const capability = capabilities.find((c) => c.id === saveTarget);
-    const section = sections.find((s) => s.id === saveTarget);
-    const draft = drafts[saveTarget] ?? emptyDraft;
-    if (!capability && !section) return [];
-
-    const featureChanges = Object.entries(draft.features).map(([key, value]) => {
-      const feature = capability!.features.find((f) => f.key === key)!;
+  /** Before and after values of a card's draft, as shown for approval and written to the history. */
+  function describeChanges(ownerId: string, draft: Draft): PendingChange[] {
+    const capability = capabilities.find((c) => c.id === ownerId);
+    const featureChanges = Object.entries(draft.features).flatMap(([key, value]) => {
+      const feature = capability?.features.find((f) => f.key === key);
+      if (!feature) return [];
       return {
         key,
         label: feature.label,
@@ -327,67 +357,49 @@ export function Dashboard({ layout }: { layout: Layout }) {
         to: value ? 'On' : 'Off',
       };
     });
-
-    const fields = capability ? capability.configs : section!.configs;
-    const configChanges = Object.entries(draft.configs).map(([key, value]) => {
-      const field = fields.find((f) => f.key === key)!;
+    const configChanges = Object.entries(draft.configs).flatMap(([key, value]) => {
+      const field = configsOf(ownerId).find((f) => f.key === key);
+      if (!field) return [];
       return { key, label: field.label, from: formatValue(field.value), to: formatValue(value) };
     });
-
     return [...featureChanges, ...configChanges];
-  }, [saveTarget, capabilities, sections, drafts]);
+  }
 
-  function confirmSave() {
-    if (!saveTarget) return;
-    const capabilityId = saveTarget;
-    const draft = drafts[capabilityId] ?? emptyDraft;
+  const pendingChanges = saveTarget ? describeChanges(saveTarget, drafts[saveTarget] ?? emptyDraft) : [];
+
+  /** Marks every submitted feature and setting Pending approval and logs each one, across any number of cards. */
+  function submitForApproval(submitted: Record<string, Draft>, reason?: string) {
     const now = new Date().toISOString();
-    const isSection = sections.some((s) => s.id === capabilityId);
+    const pendingField = (field: ConfigField, draft: Draft | undefined): ConfigField =>
+      draft && field.key in draft.configs
+        ? {
+            ...field,
+            value: draft.configs[field.key]!,
+            state: 'pending',
+            declinedBy: undefined,
+            declinedReason: undefined,
+          }
+        : field;
 
-    if (isSection) {
-      setSections((prev) =>
-        prev.map((section) =>
-          section.id === capabilityId
-            ? {
-                ...section,
-                configs: section.configs.map((field) =>
-                  field.key in draft.configs
-                    ? {
-                        ...field,
-                        value: draft.configs[field.key]!,
-                        state: 'pending' as const,
-                        declinedBy: undefined,
-                        declinedReason: undefined,
-                      }
-                    : field,
-                ),
-              }
-            : section,
-        ),
-      );
-    }
+    setSections((prev) =>
+      prev.map((section) =>
+        submitted[section.id]
+          ? { ...section, configs: section.configs.map((field) => pendingField(field, submitted[section.id])) }
+          : section,
+      ),
+    );
 
     setCapabilities((prev) =>
       prev.map((capability) => {
-        if (capability.id !== capabilityId) return capability;
+        const draft = submitted[capability.id];
+        if (!draft) return capability;
 
         const features = capability.features.map((feature) =>
           feature.key in draft.features
             ? { ...feature, state: 'pending' as const, declinedBy: undefined, declinedReason: undefined }
             : feature,
         );
-
-        const configs = capability.configs.map((field) =>
-          field.key in draft.configs
-            ? {
-                ...field,
-                value: draft.configs[field.key]!,
-                state: 'pending' as const,
-                declinedBy: undefined,
-                declinedReason: undefined,
-              }
-            : field,
-        );
+        const configs = capability.configs.map((field) => pendingField(field, draft));
 
         // Prerequisite checks recompute off the saved values, so entering an ad
         // account ID flips its check as soon as the change is saved.
@@ -395,37 +407,56 @@ export function Dashboard({ layout }: { layout: Layout }) {
           if (!check.fixesFieldKey) return check;
           const field = configs.find((f) => f.key === check.fixesFieldKey);
           if (!field) return check;
-          const filled = !(field.value === null || field.value === '' ||
-            (Array.isArray(field.value) && field.value.length === 0));
-          return { ...check, passed: filled };
+          return { ...check, passed: !isEmptyValue(field.value) };
         });
 
         return { ...capability, features, configs, prerequisites };
       }),
     );
 
-    const capability = capabilities.find((c) => c.id === capabilityId);
-    const newEvents: ChangeEvent[] = pendingChanges.map((change, index) => {
-      const feature = capability?.features.find((f) => f.key === change.key);
-      const field = configsOf(capabilityId).find((f) => f.key === change.key);
-      const source: Source = feature ? 'LaunchDarkly' : (field?.source ?? 'AppConfig');
-      return {
-        id: `local-${Date.now()}-${index}`,
-        kind: 'change',
-        capabilityId,
-        settingKey: change.key,
-        settingLabel: change.label,
-        from: change.from,
-        to: change.to,
-        actor: currentUser.name,
-        status: 'pending',
-        source,
-        timestamp: now,
-      };
+    const newEvents: ChangeEvent[] = Object.entries(submitted).flatMap(([ownerId, draft]) => {
+      const capability = capabilities.find((c) => c.id === ownerId);
+      return describeChanges(ownerId, draft).map((change, index): ChangeEvent => {
+        const feature = capability?.features.find((f) => f.key === change.key);
+        const field = configsOf(ownerId).find((f) => f.key === change.key);
+        const source: Source = feature ? 'LaunchDarkly' : (field?.source ?? 'AppConfig');
+        return {
+          id: `local-${Date.now()}-${ownerId}-${index}`,
+          kind: 'change',
+          capabilityId: ownerId,
+          settingKey: change.key,
+          settingLabel: change.label,
+          from: change.from,
+          to: change.to,
+          actor: currentUser.name,
+          status: 'pending',
+          reason,
+          source,
+          timestamp: now,
+        };
+      });
     });
-
     setHistory((prev) => [...newEvents, ...prev]);
-    setDrafts((prev) => ({ ...prev, [capabilityId]: emptyDraft }));
+
+    // Only the submitted keys leave the drafts; other unsaved edits on the same card stay.
+    setDrafts((prev) => {
+      const next = { ...prev };
+      for (const [ownerId, draft] of Object.entries(submitted)) {
+        const existing = prev[ownerId];
+        if (!existing) continue;
+        const features = { ...existing.features };
+        const configs = { ...existing.configs };
+        for (const key of Object.keys(draft.features)) delete features[key];
+        for (const key of Object.keys(draft.configs)) delete configs[key];
+        next[ownerId] = { features, configs };
+      }
+      return next;
+    });
+  }
+
+  function confirmSave() {
+    if (!saveTarget) return;
+    submitForApproval({ [saveTarget]: drafts[saveTarget] ?? emptyDraft });
     setSaveTarget(null);
   }
 
@@ -448,6 +479,16 @@ export function Dashboard({ layout }: { layout: Layout }) {
 
   /** Each card owns the slice of history for its own capability or section. */
   const eventsFor = (ownerId: string) => history.filter((event) => event.capabilityId === ownerId);
+
+  const historyGroups: HistoryOwnerGroup[] = navGroups
+    .map((group) => ({
+      group,
+      owners:
+        group === globalSettingsGroup
+          ? sections.map((s) => ({ id: s.id, name: s.name }))
+          : capabilities.filter((c) => c.navGroup === group).map((c) => ({ id: c.id, name: c.name })),
+    }))
+    .filter((g) => g.owners.length > 0);
 
   const visibleIds =
     selectedGroup === globalSettingsGroup ? sections.map((s) => s.id) : visibleCapabilities.map((c) => c.id);
@@ -496,16 +537,24 @@ export function Dashboard({ layout }: { layout: Layout }) {
           <Typography variant="body1" sx={{ color: palette.textSecondary, mt: 1 }}>
             Manage which features are enabled for each program, retailer, and brand, and track every change.
           </Typography>
+          <Box sx={{ mt: 3, display: 'flex', gap: 2 }}>
+            <ScopeSelect label="Retail Media Program" options={programs} value={programId} onChange={changeProgram} />
+            <ScopeSelect label="Retailer" options={programRetailers} value={retailerId} onChange={changeRetailer} />
+          </Box>
         </Box>
 
         <Box sx={{ mt: 3 }}>
           <Tabs scope={scope} onChange={setScope} />
         </Box>
 
-        <Box sx={{ mt: '36px' }}>
+        <Box sx={{ mt: 3 }}>
           {scope !== 'retailer' ? (
             <EmptyScope />
           ) : (
+            <>
+            <Box sx={{ mb: 3 }}>
+              <UseCasePicker useCases={useCases} onChoose={setActiveUseCase} />
+            </Box>
             <Box sx={{ display: 'flex', gap: 4, alignItems: 'flex-start' }}>
               <Box
                 sx={{
@@ -568,6 +617,7 @@ export function Dashboard({ layout }: { layout: Layout }) {
                       <GlobalSettingCard
                         key={section.id}
                         collapsible={!cardLayout}
+                        showHistory={!separateHistory}
                         section={section}
                         events={eventsFor(section.id)}
                         expanded={cardLayout || expandedIds.includes(section.id)}
@@ -592,6 +642,7 @@ export function Dashboard({ layout }: { layout: Layout }) {
                     <CapabilityCard
                       key={capability.id}
                       collapsible={!cardLayout}
+                      showHistory={!separateHistory}
                       capability={capability}
                       events={eventsFor(capability.id)}
                       expanded={cardLayout || expandedIds.includes(capability.id)}
@@ -611,7 +662,30 @@ export function Dashboard({ layout }: { layout: Layout }) {
                     />
                   ))}
               </Box>
+
+              {separateHistory && (
+                <Box
+                  sx={{
+                    width: 340 + 2 * HISTORY_SHADOW_ROOM,
+                    flexShrink: 0,
+                    m: `-${HISTORY_SHADOW_ROOM}px`,
+                    p: `${HISTORY_SHADOW_ROOM}px`,
+                    position: 'sticky',
+                    top: 24 - HISTORY_SHADOW_ROOM,
+                    maxHeight: `calc(100vh - ${48 - 2 * HISTORY_SHADOW_ROOM}px)`,
+                    overflowY: 'auto',
+                  }}
+                >
+                  <ChangeHistorySection
+                    key={retailerId}
+                    events={history}
+                    groups={historyGroups}
+                    onAddNote={addNote}
+                  />
+                </Box>
+              )}
             </Box>
+            </>
           )}
         </Box>
       </Box>
@@ -622,6 +696,18 @@ export function Dashboard({ layout }: { layout: Layout }) {
         onCancel={() => setSaveTarget(null)}
         onConfirm={confirmSave}
       />
+
+      {activeUseCase && (
+        <UseCaseWizard
+          key={`${activeUseCase.id}-${retailerId}`}
+          useCase={activeUseCase}
+          retailer={retailer}
+          capabilities={capabilities}
+          sections={sections}
+          onCancel={() => setActiveUseCase(null)}
+          onSubmit={(submitted) => submitUseCase(activeUseCase, submitted)}
+        />
+      )}
     </Box>
   );
 }

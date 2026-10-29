@@ -20,6 +20,7 @@ function isBuiltInBrowser(): boolean {
 export default function App() {
   const [authed, setAuthed] = useState(!REQUIRE_LOGIN || isBuiltInBrowser());
   const [layout, setLayout] = useState<Layout>('list');
+  const [separateHistory, setSeparateHistory] = useState(false);
 
   return (
     <ThemeProvider theme={theme}>
@@ -30,8 +31,10 @@ export default function App() {
             onLogout={() => setAuthed(false)}
             layout={layout}
             onLayoutChange={setLayout}
+            separateHistory={separateHistory}
+            onSeparateHistoryChange={setSeparateHistory}
           />
-          <Dashboard layout={layout} />
+          <Dashboard layout={layout} separateHistory={separateHistory} />
         </>
       ) : (
         <LoginScreen onSuccess={() => setAuthed(true)} />

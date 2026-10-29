@@ -117,6 +117,36 @@ export type ChangeEvent = SettingChangeEvent | NoteEvent;
 export interface Retailer {
   id: string;
   name: string;
+  /** Platform identifier shown beside the name, e.g. ADVANTAGE_GROCERY. */
+  code: string;
+}
+
+/** A Retail Media Program: the top-level tenant that retailers run under. */
+export interface Program {
+  id: string;
+  name: string;
+  code: string;
+  retailerIds: string[];
+}
+
+/** A config field a use case sets, with the value it proposes. */
+export interface UseCaseField {
+  /** Capability or Retailer global settings section the field belongs to. */
+  ownerId: string;
+  key: string;
+  /** Omitted to keep the retailer's current value; a function derives it from the retailer and that value. */
+  value?: ConfigField['value'] | ((retailer: Retailer, current: ConfigField['value']) => ConfigField['value']);
+}
+
+/** A preset bundle of features and settings for a common retailer setup. */
+export interface UseCase {
+  id: string;
+  name: string;
+  description: string;
+  /** Feature flags the use case turns on, as owner ID and feature key. */
+  features: { ownerId: string; key: string }[];
+  globalFields: UseCaseField[];
+  channelFields: UseCaseField[];
 }
 
 export interface Person {

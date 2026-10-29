@@ -6,7 +6,7 @@ import type {
   PrerequisiteCheck,
   ToggleState,
 } from '../types';
-import { defaultRetailerId } from './retailers';
+import { completeSetupRetailerId, defaultRetailerId } from './retailers';
 
 export const navGroups = [
   'Retailer global settings',
@@ -2136,7 +2136,7 @@ const metaConfigs = (o: MetaConfigOverrides): ConfigField[] => [
     label: 'Facebook Pages',
     group: 'Accounts',
     inputType: 'multiselect',
-    options: ['The Home Depot', 'The Home Depot Canada'],
+    options: ['Advantage Grocery', 'Fresh Foods Co'],
     value: o.facebookPages,
     state: 'saved',
     source: 'Database',
@@ -2146,14 +2146,13 @@ const metaConfigs = (o: MetaConfigOverrides): ConfigField[] => [
 ];
 
 function metaCapability(retailerId: string): Capability {
-  // The Home Depot US is seeded as a complete setup so the Live state can be demoed
-  // alongside the default retailer's Pending state. Every other retailer starts fully
-  // off (Incomplete/Off).
-  const isThdUs = retailerId === 'thd-us';
+  // One retailer is seeded as a complete setup so the Live state can be demoed alongside
+  // the default retailer's Pending state. Every other retailer starts fully off.
+  const isComplete = retailerId === completeSetupRetailerId;
   const isDefault = retailerId === defaultRetailerId;
 
-  const masterState: Feature['state'] = isThdUs ? 'live' : isDefault ? 'pending' : 'off';
-  const adAccountId = isThdUs ? 'act-4455667788' : null;
+  const masterState: Feature['state'] = isComplete ? 'live' : isDefault ? 'pending' : 'off';
+  const adAccountId = isComplete ? 'act-4455667788' : null;
 
   return {
     id: 'meta',
@@ -2165,13 +2164,13 @@ function metaCapability(retailerId: string): Capability {
     features: metaFeatures(masterState),
     configs: metaConfigs({
       adAccountId,
-      linkDescription: isThdUs ? 'homedepot.com' : '',
+      linkDescription: isComplete ? 'freshfoods.com' : '',
       geoCountry: 'US',
       pageName: '',
-      businessManagerId: isThdUs ? '2233445566' : '1234567890',
-      pixelId: isThdUs ? '8877665544' : '9876543210',
-      catalogId: isThdUs ? '5551112222' : '5550001111',
-      facebookPages: isThdUs ? ['The Home Depot'] : [],
+      businessManagerId: isComplete ? '2233445566' : '1234567890',
+      pixelId: isComplete ? '8877665544' : '9876543210',
+      catalogId: isComplete ? '5551112222' : '5550001111',
+      facebookPages: isComplete ? ['Fresh Foods Co'] : [],
     }),
     prerequisites: metaPrerequisites(adAccountId, masterState === 'live'),
     codeNotes: [],

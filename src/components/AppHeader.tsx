@@ -1,9 +1,17 @@
 import { useState } from 'react';
-import { Box, IconButton, ListItemIcon, ListItemText, Menu, MenuItem } from '@mui/material';
+import {
+  Box,
+  Divider,
+  IconButton,
+  Popover,
+  Switch,
+  ToggleButton,
+  ToggleButtonGroup,
+  Typography,
+} from '@mui/material';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
   faArrowRightFromBracket,
-  faCheck,
   faGear,
   faList,
   faTableCellsLarge,
@@ -12,9 +20,9 @@ import {
 import { brand, palette } from '../theme';
 import type { Layout } from './Dashboard';
 
-const layoutOptions: { id: Layout; label: string; description: string; icon: IconDefinition }[] = [
-  { id: 'list', label: 'List layout', description: 'Every card stacked in one column', icon: faList },
-  { id: 'cards', label: 'Card layout', description: 'Small cards above one expanded card', icon: faTableCellsLarge },
+const layoutOptions: { id: Layout; label: string; icon: IconDefinition }[] = [
+  { id: 'list', label: 'List', icon: faList },
+  { id: 'cards', label: 'Cards', icon: faTableCellsLarge },
 ];
 
 /** White bar with the Vantage logo on the left and the layout menu and logout on the right. */
@@ -22,19 +30,17 @@ export function AppHeader({
   onLogout,
   layout,
   onLayoutChange,
+  separateHistory,
+  onSeparateHistoryChange,
 }: {
   onLogout: () => void;
   layout: Layout;
   onLayoutChange: (next: Layout) => void;
+  separateHistory: boolean;
+  onSeparateHistoryChange: (next: boolean) => void;
 }) {
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
   const menuOpen = Boolean(menuAnchor);
-
-  function choose(next: Layout) {
-    setMenuAnchor(null);
-    if (next !== layout) onLayoutChange(next);
-  }
-
   return (
     <Box
       component="header"
@@ -63,7 +69,7 @@ export function AppHeader({
             onClick={(e) => setMenuAnchor(e.currentTarget)}
             size="small"
             aria-label="Page layout"
-            aria-haspopup="menu"
+            aria-haspopup="dialog"
             aria-expanded={menuOpen}
             aria-controls={menuOpen ? 'layout-menu' : undefined}
             sx={{
@@ -77,40 +83,66 @@ export function AppHeader({
             <FontAwesomeIcon icon={faGear} style={{ fontSize: 16 }} />
           </IconButton>
 
-          <Menu
+          <Popover
             id="layout-menu"
             anchorEl={menuAnchor}
             open={menuOpen}
             onClose={() => setMenuAnchor(null)}
             anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
             transformOrigin={{ vertical: 'top', horizontal: 'right' }}
-            slotProps={{ paper: { sx: { mt: 1, minWidth: 260 } } }}
+            slotProps={{ paper: { role: 'dialog', 'aria-label': 'Page settings', sx: { mt: 1, width: 300, p: 2 } } }}
           >
-            {layoutOptions.map((option) => {
-              const selected = option.id === layout;
-              return (
-                <MenuItem key={option.id} selected={selected} onClick={() => choose(option.id)}>
-                  <ListItemIcon sx={{ color: selected ? brand.periwinkleDark : palette.textSecondary }}>
-                    <FontAwesomeIcon icon={option.icon} style={{ fontSize: 14 }} />
-                  </ListItemIcon>
-                  <ListItemText
-                    primary={option.label}
-                    secondary={option.description}
-                    slotProps={{
-                      primary: { sx: { fontSize: 14, fontWeight: selected ? 600 : 400 } },
-                      secondary: { sx: { fontSize: 12 } },
-                    }}
-                  />
-                  {selected && (
-                    <FontAwesomeIcon
-                      icon={faCheck}
-                      style={{ fontSize: 12, color: brand.periwinkleDark, marginLeft: 12 }}
-                    />
-                  )}
-                </MenuItem>
-              );
-            })}
-          </Menu>
+            <Typography variant="body2" component="div" sx={{ fontWeight: 600 }}>
+              Layout
+            </Typography>
+            <ToggleButtonGroup
+              exclusive
+              fullWidth
+              size="small"
+              value={layout}
+              onChange={(_, next: Layout | null) => {
+                if (next) onLayoutChange(next);
+              }}
+              aria-label="Page layout"
+              sx={{ mt: 1 }}
+            >
+              {layoutOptions.map((option) => (
+                <ToggleButton
+                  key={option.id}
+                  value={option.id}
+                  sx={{
+                    gap: 1,
+                    textTransform: 'none',
+                    fontSize: 14,
+                    '&.Mui-selected, &.Mui-selected:hover': {
+                      color: brand.periwinkleDark,
+                      bgcolor: brand.periwinkleTint,
+                      fontWeight: 600,
+                    },
+                  }}
+                >
+                  <FontAwesomeIcon icon={option.icon} style={{ fontSize: 13 }} />
+                  {option.label}
+                </ToggleButton>
+              ))}
+            </ToggleButtonGroup>
+            <Divider sx={{ my: 2, mx: -2 }} />
+
+            <Box
+              component="label"
+              sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2, cursor: 'pointer' }}
+            >
+              <Typography variant="body2" component="div" sx={{ fontWeight: 600 }}>
+                Separate change history
+              </Typography>
+              <Switch
+                size="small"
+                checked={separateHistory}
+                onChange={(e) => onSeparateHistoryChange(e.target.checked)}
+                sx={{ flexShrink: 0 }}
+              />
+            </Box>
+          </Popover>
 
           <Box
             component="button"

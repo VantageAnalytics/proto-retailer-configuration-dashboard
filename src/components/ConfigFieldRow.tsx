@@ -15,12 +15,15 @@ export function ConfigFieldRow({
   onChange,
   onRequestAgain,
   fieldRef,
+  draftLabel = 'Unsaved',
 }: {
   field: ConfigField;
   draftValue: ConfigValue | undefined;
   onChange: (next: ConfigValue) => void;
   onRequestAgain: () => void;
   fieldRef?: (node: HTMLElement | null) => void;
+  /** Chip shown while the value differs from the saved one; null shows none. */
+  draftLabel?: string | null;
 }) {
   const unsaved = draftValue !== undefined;
   const value = unsaved ? draftValue : field.value;
@@ -107,7 +110,7 @@ export function ConfigFieldRow({
           {field.label}
         </Typography>
         {required && <Chip>Required</Chip>}
-        {unsaved && <Chip tone="info">Unsaved</Chip>}
+        {unsaved && draftLabel && <Chip tone="info">{draftLabel}</Chip>}
         {!unsaved && field.state === 'pending' && <PendingPill />}
         {!unsaved && field.state === 'declined' && <ErrorPill>Declined</ErrorPill>}
       </Box>

@@ -6,6 +6,14 @@ export interface StatusResult {
   reasons: string[];
 }
 
+/** How a config value reads in change summaries and the history. Equal strings mean no change. */
+export function formatValue(value: ConfigField['value'] | undefined): string {
+  if (value === null || value === undefined || value === '') return '(empty)';
+  if (typeof value === 'boolean') return value ? 'On' : 'Off';
+  if (Array.isArray(value)) return value.length ? value.join(', ') : '(empty)';
+  return value;
+}
+
 export function isEmptyValue(value: ConfigField['value']): boolean {
   if (value === null || value === undefined) return true;
   if (typeof value === 'string') return value.trim() === '';
