@@ -226,7 +226,7 @@ export function Dashboard({ layout, separateHistory }: { layout: Layout; separat
   const [sections, setSections] = useState<GlobalSection[]>(globalSettingSections);
   const [history, setHistory] = useState<ChangeEvent[]>(() => buildChangeHistory(defaultRetailerId));
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
-  const [expandedIds, setExpandedIds] = useState<string[]>(['meta']);
+  const [expandedIds, setExpandedIds] = useState<string[]>([]);
   const [selectedNavId, setSelectedNavId] = useState<string | null>('meta');
   const [selectedGroup, setSelectedGroup] = useState<string>('Channels');
   const [saveTarget, setSaveTarget] = useState<string | null>(null);
