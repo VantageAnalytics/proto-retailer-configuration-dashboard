@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Box, Button, Checkbox, Dialog, DialogActions, DialogContent, Divider, Typography } from '@mui/material';
+import { Box, Button, Dialog, DialogActions, DialogContent, Divider, Typography } from '@mui/material';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faCheck } from '@fortawesome/free-solid-svg-icons';
 import { brand, palette } from '../theme';
@@ -7,11 +7,11 @@ import { formatValue } from '../logic/status';
 import type { Capability, ConfigField, Feature, GlobalSection, Retailer, UseCase, UseCaseField } from '../types';
 import type { Draft } from './CapabilityCard';
 import { ConfigFieldRow, type ConfigValue } from './ConfigFieldRow';
+import { StateToggle } from './StateToggle';
 import { PendingPill, SectionHeading, SuccessPill } from './ui';
 
-const steps = ['Features', 'Global settings', 'Channel settings'] as const;
-
-const checkboxSx = { p: 0, mt: '2px', color: palette.border, '&.Mui-checked': { color: brand.periwinkleDark } };
+/** Same order as a capability card: features, then their configuration, then retailer-wide prerequisites. */
+const steps = ['Features', 'Channel settings', 'Global settings'] as const;
 
 interface ResolvedFeature {
   id: string;
@@ -98,8 +98,8 @@ function EmptyStep({ children }: { children: string }) {
 }
 
 /**
- * Walks through the features and settings a use case sets for one retailer. Every item
- * starts included; whatever is left checked and differs from today is sent for approval.
+ * Walks through the features and settings a use case sets for one retailer. Features left on
+ * and settings whose value differs from today are sent for approval.
  */
 export function UseCaseWizard({
   useCase,
@@ -168,7 +168,7 @@ export function UseCaseWizard({
     }
     for (const item of allFields) {
       const value = values[item.id];
-      if (!included(item.id) || formatValue(value) === formatValue(item.field.value)) continue;
+      if (formatValue(value) === formatValue(item.field.value)) continue;
       draftFor(item.ownerId).configs[item.field.key] = value;
       count += 1;
     }
@@ -181,31 +181,17 @@ export function UseCaseWizard({
         <SectionHeading>{ownerName}</SectionHeading>
         <Box sx={{ mt: 1.5, display: 'flex', flexDirection: 'column', gap: 2 }}>
           {group.map((item) => {
-            const on = included(item.id);
             const value = values[item.id];
             const changed = formatValue(value) !== formatValue(item.field.value);
             return (
-              <Box key={item.id} sx={{ display: 'flex', alignItems: 'flex-start', gap: 1.5 }}>
-                <Checkbox
-                  size="small"
-                  checked={on}
-                  onChange={() => toggleIncluded(item.id)}
-                  slotProps={{ input: { 'aria-label': `Include ${item.field.label}` } }}
-                  sx={checkboxSx}
-                />
-                <Box
-                  aria-disabled={!on}
-                  sx={{ flex: 1, minWidth: 0, opacity: on ? 1 : 0.5, pointerEvents: on ? 'auto' : 'none' }}
-                >
-                  <ConfigFieldRow
-                    field={item.field}
-                    draftValue={changed ? value : undefined}
-                    draftLabel={null}
-                    onChange={(next) => setValues((prev) => ({ ...prev, [item.id]: next }))}
-                    onRequestAgain={() => {}}
-                  />
-                </Box>
-              </Box>
+              <ConfigFieldRow
+                key={item.id}
+                field={item.field}
+                draftValue={changed ? value : undefined}
+                draftLabel={null}
+                onChange={(next) => setValues((prev) => ({ ...prev, [item.id]: next }))}
+                onRequestAgain={() => {}}
+              />
             );
           })}
         </Box>
@@ -218,13 +204,7 @@ export function UseCaseWizard({
   return (
     <Dialog open onClose={onCancel} maxWidth="md" fullWidth slotProps={{ paper: { sx: { borderRadius: '8px' } } }}>
       <Box sx={{ px: 3, pt: 3 }}>
-        <Typography
-          variant="caption"
-          sx={{ color: palette.textSecondary, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}
-        >
-          Use case
-        </Typography>
-        <Typography variant="h2" sx={{ mt: '2px' }}>
+        <Typography variant="h2">
           {useCase.name}
         </Typography>
         <Typography variant="body2" sx={{ color: palette.textSecondary, mt: '2px' }}>
@@ -240,7 +220,7 @@ export function UseCaseWizard({
         {step === 0 && (
           <>
             <StepIntro title="Choose features">
-              Uncheck any feature you don't want requested. Features that are already on stay as they are.
+              Turn off any feature you don't want requested. Features that are already on stay as they are.
             </StepIntro>
             {features.length === 0 && <EmptyStep>None of this use case's features are available for this retailer.</EmptyStep>}
             {groupBy(features).map(([ownerName, group]) => (
@@ -248,18 +228,16 @@ export function UseCaseWizard({
                 <SectionHeading>{ownerName}</SectionHeading>
                 <Box sx={{ mt: 1.5, display: 'grid', gridTemplateColumns: '1fr 1fr', columnGap: 3, rowGap: 2 }}>
                   {group.map(({ id, feature, alreadyOn }) => (
-                    <Box
-                      key={id}
-                      component="label"
-                      sx={{ display: 'flex', alignItems: 'flex-start', gap: 1.5, cursor: alreadyOn ? 'default' : 'pointer' }}
-                    >
-                      <Checkbox
-                        size="small"
-                        checked={alreadyOn || included(id)}
-                        disabled={alreadyOn}
-                        onChange={() => toggleIncluded(id)}
-                        sx={{ ...checkboxSx, '&.Mui-disabled.Mui-checked': { color: palette.greyTrack } }}
-                      />
+                    <Box key={id} sx={{ display: 'flex', alignItems: 'flex-start', gap: 2 }}>
+                      {alreadyOn ? (
+                        <StateToggle state={feature.state} ariaLabel={`${feature.label} is already on`} presentational />
+                      ) : (
+                        <StateToggle
+                          state={included(id) ? 'live' : 'off'}
+                          ariaLabel={feature.label}
+                          onChange={() => toggleIncluded(id)}
+                        />
+                      )}
                       <Box sx={{ minWidth: 0 }}>
                         <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
                           <Typography variant="body2" sx={{ fontWeight: 600 }}>
@@ -284,25 +262,26 @@ export function UseCaseWizard({
 
         {step === 1 && (
           <>
-            <StepIntro title="Review global settings">
-              Retailer global settings this use case sets. Adjust a value, or uncheck it to leave it as it is.
+            <StepIntro title="Review channel settings">
+              Settings for the features you chose. Adjust any value before sending.
             </StepIntro>
-            {initialGlobal.length === 0 ? <EmptyStep>This use case doesn't set any global settings.</EmptyStep> : renderFields(initialGlobal)}
+            {initialChannel.length === 0 ? <EmptyStep>This use case doesn't set any channel settings.</EmptyStep> : renderFields(initialChannel)}
           </>
         )}
 
         {step === 2 && (
           <>
-            <StepIntro title="Review channel settings">
-              Channel settings this use case sets. Adjust a value, or uncheck it to leave it as it is.
+            <StepIntro title="Review global settings">
+              Retailer-wide settings that need to be in place before these features can run. Adjust any value before
+              sending.
             </StepIntro>
-            {initialChannel.length === 0 ? <EmptyStep>This use case doesn't set any channel settings.</EmptyStep> : renderFields(initialChannel)}
+            {initialGlobal.length === 0 ? <EmptyStep>This use case doesn't set any global settings.</EmptyStep> : renderFields(initialGlobal)}
           </>
         )}
       </DialogContent>
 
       <Divider />
-      <DialogActions sx={{ px: 3, py: 2, gap: 2 }}>
+      <DialogActions disableSpacing sx={{ px: 3, py: 2, gap: 1 }}>
         <Typography variant="body2" sx={{ color: palette.textSecondary, mr: 'auto' }}>
           {submission.count === 0
             ? 'Nothing will change yet'

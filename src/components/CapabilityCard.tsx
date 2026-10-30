@@ -1,11 +1,7 @@
 import { useState } from 'react';
 import { Box, Collapse, Divider, Typography } from '@mui/material';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import {
-  faAngleDown,
-  faAngleUp,
-  faRotateRight,
-} from '@fortawesome/free-solid-svg-icons';
+import { faAngleDown, faAngleUp } from '@fortawesome/free-solid-svg-icons';
 import { cardShadow, palette } from '../theme';
 import { computeCapabilityStatus, summaryLine } from '../logic/status';
 import { configGroups } from '../data/capabilities';
@@ -16,13 +12,11 @@ import { StateToggle } from './StateToggle';
 import {
   Banner,
   Chip,
-  ErrorPill,
   InfoTooltip,
   PendingPill,
   SectionHeading,
   StatusPill,
   SuccessPill,
-  TextAction,
   UnsavedBar,
 } from './ui';
 import type { Capability, ChangeEvent, Feature } from '../types';
@@ -70,7 +64,6 @@ function FeatureRow({
   disabled,
   disabledReason,
   onChange,
-  onRequestAgain,
   required,
 }: {
   feature: Feature;
@@ -78,7 +71,6 @@ function FeatureRow({
   disabled: boolean;
   disabledReason?: string;
   onChange: (next: boolean) => void;
-  onRequestAgain: () => void;
   /** The master feature carries a Required chip in place of its description. */
   required?: boolean;
 }) {
@@ -107,21 +99,10 @@ function FeatureRow({
           {unsaved && <Chip tone="info">Unsaved</Chip>}
           {!unsaved && feature.state === 'pending' && <PendingPill />}
           {!unsaved && feature.state === 'live' && <SuccessPill>Live</SuccessPill>}
-          {!unsaved && feature.state === 'declined' && <ErrorPill>Declined</ErrorPill>}
         </Box>
         <Typography variant="caption" sx={{ color: palette.textSecondary, display: 'block', mt: '2px' }}>
           {feature.description}
         </Typography>
-        {!unsaved && feature.state === 'declined' && (
-          <Box sx={{ mt: 1, display: 'flex', flexDirection: 'column', gap: 0.5, alignItems: 'flex-start' }}>
-            <Typography variant="caption" sx={{ color: palette.errorText }}>
-              Declined by {feature.declinedBy}: {feature.declinedReason}
-            </Typography>
-            <TextAction icon={faRotateRight} onClick={onRequestAgain}>
-              Request again
-            </TextAction>
-          </Box>
-        )}
       </Box>
     </Box>
   );
@@ -238,7 +219,6 @@ export function CapabilityCard(props: Props) {
                     disabled={false}
                     required
                     onChange={(next) => onFeatureChange(master.key, next)}
-                    onRequestAgain={() => onFeatureChange(master.key, true)}
                   />
                 )}
                 <Box
@@ -259,7 +239,6 @@ export function CapabilityCard(props: Props) {
                         disabled={!masterOn}
                         disabledReason={master ? `Requires ${master.label} to be on` : undefined}
                         onChange={(next) => onFeatureChange(feature.key, next)}
-                        onRequestAgain={() => onFeatureChange(feature.key, true)}
                       />
                     ))}
                 </Box>
